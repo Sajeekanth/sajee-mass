@@ -1,4 +1,5 @@
-import { mockDb } from "../mock/mockData";
+import apiClient from "../lib/api";
+import { ENDPOINTS } from "../utils/apiendpoint";
 
 export interface Priority {
   id: number;
@@ -19,48 +20,79 @@ export interface GetPrioritiesResponse {
 }
 
 export const getAllPriorities = async (
-  _page: number = 0,
-  _pageSize: number = 100
+  page: number = 0,
+  pageSize: number = 100
 ): Promise<GetPrioritiesResponse> => {
-  const priorities = mockDb.getPriorities();
+  const response = await apiClient.get(ENDPOINTS.priority, {
+    params: { page, size: pageSize },
+  });
+  const envelope = response.data;
+  const paged = envelope?.data;
+  const rawList: any[] = Array.isArray(paged?.content)
+    ? paged.content
+    : Array.isArray(paged)
+    ? paged
+    : [];
+
+  const content: Priority[] = rawList.map((p: any) => ({
+    id: p.id,
+    name: p.name || p.priorityName || '',
+    color: p.color || '',
+  }));
+
   return {
-    status: 'success',
-    message: 'Priorities fetched successfully',
+    status: envelope?.status || 'success',
+    message: envelope?.message || 'Priorities fetched successfully',
     data: {
-      content: priorities.map(p => ({ id: p.id, name: p.priorityName, color: p.color })),
-      totalElements: priorities.length,
-      totalPages: 1,
-      size: 100,
-      number: 0,
+      content,
+      totalElements: paged?.totalElements !== undefined ? paged.totalElements : content.length,
+      totalPages: paged?.totalPages !== undefined ? paged.totalPages : 1,
+      size: paged?.pageSize !== undefined ? paged.pageSize : pageSize,
+      number: paged?.pageNumber !== undefined ? paged.pageNumber : page,
     },
   };
 };
 
 export const updatePriority = async (id: number, data: { name: string; color: string }) => {
-  const updated = mockDb.updatePriority(id, data);
+  const response = await apiClient.put(ENDPOINTS.priorityById(id), data);
+  const envelope = response.data;
+  const updated = envelope?.data;
   return {
-    status: 'success',
-    statusCode: 200,
-    message: 'Priority updated successfully',
-    data: updated ? { id: updated.id, name: updated.priorityName, color: updated.color } : null,
+    status: envelope?.status || 'success',
+    statusCode: envelope?.statusCode || 200,
+    message: envelope?.message || 'Priority updated successfully',
+    data: updated
+      ? {
+          id: updated.id,
+          name: updated.name || updated.priorityName,
+          color: updated.color,
+        }
+      : null,
   };
 };
 
 export const deletePriority = async (id: number) => {
-  mockDb.deletePriority(id);
+  const response = await apiClient.delete(ENDPOINTS.priorityById(id));
+  const envelope = response.data;
   return {
-    status: 'success',
-    statusCode: 200,
-    message: 'Priority deleted successfully',
+    status: envelope?.status || 'success',
+    statusCode: envelope?.statusCode || 200,
+    message: envelope?.message || 'Priority deleted successfully',
   };
 };
 
 export const createPriority = async (data: { name: string; color: string }) => {
-  const created = mockDb.createPriority(data);
+  const response = await apiClient.post(ENDPOINTS.priority, data);
+  const envelope = response.data;
+  const created = envelope?.data || {};
   return {
-    status: 'success',
-    statusCode: 200,
-    message: 'Priority created successfully',
-    data: { id: created.id, name: created.priorityName, color: created.color },
+    status: envelope?.status || 'success',
+    statusCode: envelope?.statusCode || 201,
+    message: envelope?.message || 'Priority created successfully',
+    data: {
+      id: created.id,
+      name: created.name || created.priorityName,
+      color: created.color,
+    },
   };
 };

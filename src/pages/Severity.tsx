@@ -165,11 +165,14 @@ const Severity: React.FC = () => {
       return;
     }
     
+    // Validate weight before creating
+    if (formData.weight === undefined || formData.weight === null || isNaN(formData.weight) || formData.weight < 0 || String(formData.weight).trim() === '') {
+      showToast('Severity weight is required.', 'error');
+      return;
+    }
+
     // Validate name before creating
     if (formData.name && !validateName(formData.name)) {
-      // Close modal and show validation error on main page
-      setIsCreateModalOpen(false);
-      resetForm();
       showToast('Severity name can only contain alphabets and spaces.', 'error');
       return;
     }
@@ -194,20 +197,12 @@ const Severity: React.FC = () => {
       resetForm();
       showToast('Severity created successfully!');
     } catch (err: any) {
-      // Close modal and show validation error on main page for all errors
-      setIsCreateModalOpen(false);
-      resetForm();
-      
-      // Extract meaningful error message from the error object
       let errorMessage = 'Failed to create Severity';
       if (err.response?.data?.message) {
         errorMessage = err.response.data.message;
       } else if (err.message) {
         errorMessage = err.message;
-      } else if (err.response?.status === 400) {
-        errorMessage = 'Invalid Severity name. Please check your input.';
       }
-      
       showToast(errorMessage, 'error');
     }
   };
@@ -215,6 +210,12 @@ const Severity: React.FC = () => {
   const handleEdit = async () => {
 
   if (!editingSeverity) return;
+
+  // Validate weight before updating
+  if (formData.weight === undefined || formData.weight === null || isNaN(formData.weight) || formData.weight < 0 || String(formData.weight).trim() === '') {
+    showToast('Severity weight is required.', 'error');
+    return;
+  }
 
   // No changes check
   if (
@@ -470,7 +471,7 @@ const Severity: React.FC = () => {
           </div>
           <div className="flex justify-end space-x-3 pt-4 w-full">
             <Button variant="secondary" onClick={() => { setIsCreateModalOpen(false); resetForm(); setShowColorPickerCreate(false); }}>Cancel</Button>
-            <Button onClick={handleCreate} disabled={!formData.name || !!colorError}>Create</Button>
+            <Button onClick={handleCreate} disabled={!formData.name || formData.weight === undefined || formData.weight === null || isNaN(formData.weight) || !!colorError}>Create</Button>
           </div>
         </div>
       </Modal>
@@ -490,7 +491,7 @@ const Severity: React.FC = () => {
           <div><label className="block text-sm font-medium text-gray-700 mb-1">Weight</label><Input type="number" value={formData.weight} min={1} onChange={e => setFormData({ ...formData, weight: Number(e.target.value) })} placeholder="Enter severity weight" /></div>
           <div className="flex justify-end space-x-3 pt-4">
             <Button variant="secondary" onClick={() => { setIsEditModalOpen(false); setEditingSeverity(null); resetForm(); setShowColorPickerEdit(false); }}>Cancel</Button>
-            <Button onClick={handleEdit} disabled={!formData.name}>Update</Button>
+            <Button onClick={handleEdit} disabled={!formData.name || formData.weight === undefined || formData.weight === null || isNaN(formData.weight)}>Update</Button>
           </div>
         </div>
       </Modal>

@@ -26,7 +26,7 @@ export interface ProjectAllocationPayload {
   roleId: number;
   allocationPercent: number;
   startDate: string;
-  endDate?: string;
+  endDate: string;
 }
 
 export async function postProjectAllocations(payload: ProjectAllocationPayload) {
@@ -36,7 +36,7 @@ export async function postProjectAllocations(payload: ProjectAllocationPayload) 
     roleId: Number(payload.roleId),
     allocationPercent: Number(payload.allocationPercent),
     startDate: payload.startDate,
-    endDate: payload.endDate || null,
+    endDate: payload.endDate,
   });
   const envelope = response.data;
   return {

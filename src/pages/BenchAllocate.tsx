@@ -1224,17 +1224,61 @@ const allocatedEmployees = useMemo(
 
     if (toAllocate.length === 0) {
       showToast("Please select employees to allocate", "error");
-
       return;
     }
 
-    setAllocationModal({ open: true, employees: toAllocate });
+    const defaultStartDate = new Date().toISOString().split("T")[0];
+    const mappedToAllocate = toAllocate.map((emp: any) => ({
+      ...emp,
+      allocationStartDate: emp.allocationStartDate || defaultStartDate,
+      allocationEndDate: emp.allocationEndDate || "",
+      allocationAvailability: emp.allocationAvailability ?? emp.availability ?? 100,
+    }));
+
+    setAllocationModal({ open: true, employees: mappedToAllocate });
   };
 
   const handleConfirmAllocation = async (updatedEmployees: any[]) => {
     if (!selectedProjectId) {
       showToast("Please select a project first", "error");
       return;
+    }
+
+    // Client-side validation: block submission when any mandatory field is missing
+    for (const emp of updatedEmployees) {
+      const empName = `${emp.firstName || ""} ${emp.lastName || ""}`.trim() || `Employee #${emp.id}`;
+
+      if (!emp.id) {
+        showToast(`Employee ID is missing for ${empName}.`, "error");
+        return;
+      }
+      if (!emp.roleId || String(emp.roleId).trim() === "") {
+        showToast(`Role is required for ${empName}.`, "error");
+        return;
+      }
+      const allocPct = emp.allocationAvailability ?? emp.availability;
+      if (
+        allocPct === undefined ||
+        allocPct === null ||
+        isNaN(Number(allocPct)) ||
+        Number(allocPct) < 1 ||
+        Number(allocPct) > 100
+      ) {
+        showToast(`Allocation percentage must be between 1% and 100% for ${empName}.`, "error");
+        return;
+      }
+      if (!emp.allocationStartDate || String(emp.allocationStartDate).trim() === "") {
+        showToast(`Start date is required for ${empName}.`, "error");
+        return;
+      }
+      if (!emp.allocationEndDate || String(emp.allocationEndDate).trim() === "") {
+        showToast(`End date is required for ${empName}.`, "error");
+        return;
+      }
+      if (new Date(emp.allocationEndDate) < new Date(emp.allocationStartDate)) {
+        showToast(`End date cannot precede start date for ${empName}.`, "error");
+        return;
+      }
     }
 
     setIsAllocating(true);
@@ -1255,9 +1299,8 @@ const allocatedEmployees = useMemo(
 
         try {
           if (emp.allocationId) {
-            
-            await updateProjectAllocation(
-              emp.allocationId, {
+            await updateProjectAllocation(emp.allocationId, {
+              startDate: emp.allocationStartDate,
               endDate: emp.allocationEndDate,
               roleId: emp.roleId,
               allocationPercent: Number(
@@ -1265,7 +1308,6 @@ const allocatedEmployees = useMemo(
               ),
             });
           } else {
-            
             await postProjectAllocations(payload);
           }
         } catch (error: any) {
@@ -1277,21 +1319,19 @@ const allocatedEmployees = useMemo(
 
       if (allocationErrors.length > 0) {
         showToast(`Failed: ${allocationErrors.join(", ")}`, "error");
+        // Do not close modal on error to preserve form values
       } else {
         setAllocationSuccessModal(true);
-
-        
         await fetchBenchEmployees({}, 0, benchPageSize);
-
-        
         await refreshProjectAllocations();
-
         setSelectedBench([]);
         setAllocationModal({ open: false, employees: [] });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Allocation failed:", error);
-      showToast("Failed to allocate employees", "error");
+      const errorMsg = error.response?.data?.message || error.message || "Failed to allocate employees";
+      showToast(errorMsg, "error");
+      // Do not close modal on error to preserve form values
     } finally {
       setIsAllocating(false);
     }
@@ -2694,13 +2734,7 @@ const allocatedEmployees = useMemo(
 
                   <input
                     type="date"
-                    min={new Date().toISOString().split("T")[0]}
-                    max={new Date().toISOString().split("T")[0]}
-                    value={
-                      (emp.allocationStartDate = new Date()
-                        .toISOString()
-                        .split("T")[0])
-                    }
+                    value={emp.allocationStartDate || ""}
                     onChange={(e) => {
                       const newStartDate = e.target.value;
 

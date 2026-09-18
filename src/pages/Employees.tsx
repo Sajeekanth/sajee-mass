@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Plus, Edit, Trash2, Award, RefreshCw  } from "lucide-react";
+import { Plus, Edit, Trash2, Award, RefreshCw, Eye } from "lucide-react";
 import { Card, CardContent, CardHeader } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Input";
@@ -26,19 +26,42 @@ interface LocalDesignation {
   name: string;
 }
 
+const extractErrorMessage = (error: any, fallback: string): string => {
+  if (error?.response?.data?.message) {
+    return error.response.data.message;
+  }
+  if (error?.response?.data?.errors) {
+    if (typeof error.response.data.errors === "object") {
+      return Object.values(error.response.data.errors).join("; ");
+    }
+    return String(error.response.data.errors);
+  }
+  if (error?.message) {
+    return error.message;
+  }
+  return fallback;
+};
 
 interface LocalEmployee {
-  id: string;
-  userId : number;
+  id: string | number;
+  userId: number | string;
+  employeeCode?: string;
   firstName: string;
   lastName: string;
   gender: string;
+  userGender?: string;
   email: string;
   contactNo: string;
+  phone?: string;
+  whatsappNumber?: string;
   name: string;
-   designationId: number;
+  designationName?: string;
+  designationId: number;
+  roleId?: number;
+  roleName?: string;
   joinDate: string;
-  isActive:boolean;
+  joinedDate?: string;
+  isActive: boolean;
   skills: string[];
   experience: number;
   availability: number;
@@ -100,167 +123,191 @@ export const Employees: React.FC = () => {
     setToast({ isOpen: true, message, type });
 
   const filteredEmployees = allEmployees.filter((emp) => {
-  const matchesSearch =
-    !searchTerm.trim() ||
-    emp.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    emp.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    emp.email.toLocaleLowerCase().includes(searchTerm.toLowerCase())||                              
-    emp.contactNo.includes(searchTerm) ||
-    
-    `EMP${String(emp.id).padStart(4, "0")}`.toLowerCase().includes(searchTerm.toLowerCase());
+    const code = emp.employeeCode || formatEmployeeId(emp.id);
+    const matchesSearch =
+      !searchTerm.trim() ||
+      (emp.firstName || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (emp.lastName || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (emp.email || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (emp.contactNo || emp.phone || emp.whatsappNumber || "").includes(searchTerm) ||
+      code.toLowerCase().includes(searchTerm.toLowerCase());
 
-  const matchesStatus = !isActiveFilter || String(emp.isActive) === isActiveFilter;
-  const matchesGender = !genderFilter || emp.gender === genderFilter;
-  const matchesDesignation = !nameFilter || emp.designationName === nameFilter;
+    const matchesStatus = !isActiveFilter || String(emp.isActive) === isActiveFilter;
+    const matchesGender = !genderFilter || emp.gender === genderFilter || emp.userGender === genderFilter;
+    const matchesDesignation = !nameFilter || emp.designationName === nameFilter || emp.name === nameFilter;
 
-  return matchesSearch && matchesStatus && matchesGender && matchesDesignation;
-});
+    return matchesSearch && matchesStatus && matchesGender && matchesDesignation;
+  });
 
   const totalPages = Math.ceil(filteredEmployees.length / rowsPerPage);
 
-const startIndex = (currentPage - 1) * rowsPerPage;
-const paginatedEmployees = filteredEmployees.slice(
-  startIndex,
-  startIndex + rowsPerPage
-);
+  const startIndex = (currentPage - 1) * rowsPerPage;
+  const paginatedEmployees = filteredEmployees.slice(
+    startIndex,
+    startIndex + rowsPerPage
+  );
   const resetForm = () => {
     setFormData({
       firstName: "", lastName: "", gender: "", email: "", contactNo: "",
-      name: "", designationId : "",experience: 0, joinDate: new Date().toISOString().split("T")[0], availability: 100, isActive: true, skills: "",
+      name: "", designationId: "", experience: 0, joinDate: new Date().toISOString().split("T")[0], availability: 100, isActive: true, skills: "",
     });
   };
 
-  const handleSubmit = async(e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-     if (savingEmployee) return;
-      setSavingEmployee(true);
-     try{
-       if (editingEmployee) {
-     const Updatepayload = {
+    if (savingEmployee) return;
+    setSavingEmployee(true);
+    try {
+      const selectedDes = names.find(n => Number(n.id) === Number(formData.designationId));
+      const desName = selectedDes ? selectedDes.name : "";
+
+      if (editingEmployee) {
+        const Updatepayload = {
           firstName: formData.firstName,
           lastName: formData.lastName,
           email: formData.email,
           contactNo: formData.contactNo,
+          phone: formData.contactNo,
           gender: formData.gender,
+          userGender: formData.gender,
           joinDate: formData.joinDate,
+          joinedDate: formData.joinDate,
           designationId: Number(formData.designationId),
+          designationName: desName,
+          name: desName,
         };
-            const response = await updateUser( Number(editingEmployee.id), Updatepayload);
+        const response = await updateUser(Number(editingEmployee.id), Updatepayload as any);
         await getAllEmployees();
-        showToast(response.statusMessage);
-    
-
-
-    } else {
+        showToast(response.statusMessage || response.message || "Employee updated successfully");
+      } else {
         const apiPayLoad = {
-        firstName: formData.firstName,
-        lastName: formData.lastName,
-        gender: formData.gender,
-        email: formData.email,
-        contactNo: formData.contactNo,
-       designationId: Number(formData.designationId),
-        joinDate: formData.joinDate,
-        isActive: formData.isActive ? "active" : "inactive",
-        skills: formData.skills.split(",").map(s => s.trim()).filter(Boolean),
-        experience: formData.experience,
-        availability: formData.availability,
-        currentProjects: [],
-      };
-       const response = await createUser(apiPayLoad)
-      console.log(createUser);
-       await getAllEmployees()
-      showToast(response.statusMessage);
-
-    }
-    setEditingEmployee(null);
-    resetForm();
-    setIsModalOpen(false);
-  }catch(error: any){
-      const errorMsg =error.response?.data?.message || "Failed to create Employee";
+          firstName: formData.firstName,
+          lastName: formData.lastName,
+          gender: formData.gender,
+          userGender: formData.gender,
+          email: formData.email,
+          contactNo: formData.contactNo,
+          phone: formData.contactNo,
+          designationId: Number(formData.designationId),
+          designationName: desName,
+          name: desName,
+          joinDate: formData.joinDate,
+          joinedDate: formData.joinDate,
+          isActive: formData.isActive ? "active" : "inactive",
+          skills: formData.skills.split(",").map(s => s.trim()).filter(Boolean),
+          experience: formData.experience,
+          availability: formData.availability,
+          currentProjects: [],
+        };
+        const response = await createUser(apiPayLoad);
+        await getAllEmployees();
+        showToast(response.statusMessage || response.message || "Employee created successfully");
+      }
+      setEditingEmployee(null);
+      resetForm();
+      setIsModalOpen(false);
+    } catch (error: any) {
+      const errorMsg = extractErrorMessage(error, "Failed to save Employee");
       showToast(errorMsg, "error");
-  }finally {
-    setSavingEmployee(false);
-  }
+    } finally {
+      setSavingEmployee(false);
+    }
   };
 
   const handleEdit = (employee: LocalEmployee) => {
-    console.log('gf fbgr',employee);
-    
     setEditingEmployee(employee);
+    const joinVal = employee.joinDate || employee.joinedDate || "";
     setFormData({
-      firstName: employee.firstName,
-      lastName: employee.lastName,
-      gender: employee.gender,
-      email: employee.email,
-      contactNo: employee.contactNo,
-      name: employee.name,
-      designationId : employee.designationId,
-      experience: employee.experience,
-      joinDate: employee.joinDate ? employee.joinDate.split("T")[0] : "",
-      availability: employee.availability,
-      isActive: employee.isActive === "active",
+      firstName: employee.firstName || "",
+      lastName: employee.lastName || "",
+      gender: employee.gender || employee.userGender || "",
+      email: employee.email || "",
+      contactNo: employee.contactNo || employee.phone || employee.whatsappNumber || "",
+      name: employee.name || employee.designationName || "",
+      designationId: employee.designationId ? String(employee.designationId) : "",
+      experience: employee.experience || 0,
+      joinDate: joinVal ? joinVal.split("T")[0] : "",
+      availability: employee.availability || 100,
+      isActive: employee.isActive === true || (employee.isActive as any) === "active",
       skills: Array.isArray(employee.skills) ? employee.skills.join(", ") : "",
     });
     setIsModalOpen(true);
   };
 
     const getAllEmployees = async () => {
-      const response = await getAllUsersSimple(); // all employees API
-      const list = Array.isArray(response.data)
-        ? response.data
-        : Array.isArray(response.data?.content)
-        ? response.data.content
-        : [];
+      try {
+        const response = await getAllUsersSimple();
+        const list = Array.isArray(response.data)
+          ? response.data
+          : Array.isArray((response.data as any)?.content)
+          ? (response.data as any).content
+          : [];
 
-      setAllEmployees(list);
-      setEmployees(list);
+        const sortedList = [...list].sort((a, b) => {
+          const numA = parseInt(String(a.id || a.userId || "").replace(/\D/g, ""), 10) || 0;
+          const numB = parseInt(String(b.id || b.userId || "").replace(/\D/g, ""), 10) || 0;
+          return numA - numB;
+        });
+
+        setAllEmployees(sortedList);
+        setEmployees(sortedList);
+      } catch (error: any) {
+        const errorMsg = extractErrorMessage(error, "Failed to load employees");
+        showToast(errorMsg, "error");
+      }
     };
 
-        const handleRefresh = async () => {
-          setRefreshing(true);
+    const handleRefresh = async () => {
+      setRefreshing(true);
+      try {
+        const response = await getAllUsersSimple();
+        const list = Array.isArray(response.data)
+          ? response.data
+          : Array.isArray((response.data as any)?.content)
+          ? (response.data as any).content
+          : [];
 
-           try {
-                const response = await getAllUsersSimple();
+        const sortedList = [...list].sort((a, b) => {
+          const numA = parseInt(String(a.id || a.userId || "").replace(/\D/g, ""), 10) || 0;
+          const numB = parseInt(String(b.id || b.userId || "").replace(/\D/g, ""), 10) || 0;
+          return numA - numB;
+        });
 
-                const list = Array.isArray(response.data)
-                  ? response.data
-                  : Array.isArray(response.data?.content)
-                  ? response.data.content
-                  : [];
-
-                setAllEmployees(list);
-                setEmployees(list);
-
-              } catch(error) {
-                console.log(error);
-              } finally {
-                setRefreshing(false);
-              }
-        };
-
-  const getAllDesignations = async()=>{
-    const response = await getDesignations()
-    console.log('Designation :',response.data.content);
-    
-     const uniqueData = response.data.content.filter(
-    (value, index, self) =>
-      index ===
-      self.findIndex(
-        (t) => t.name === value.name
-          )
-      );
-      console.log(uniqueData);
-      setDesignations(uniqueData);
+        setAllEmployees(sortedList);
+        setEmployees(sortedList);
+        showToast("Employees refreshed successfully", "success");
+      } catch (error: any) {
+        const errorMsg = extractErrorMessage(error, "Failed to refresh employees");
+        showToast(errorMsg, "error");
+      } finally {
+        setRefreshing(false);
       }
+    };
+
+  const getAllDesignations = async () => {
+    try {
+      const response = await getDesignations();
+      const content = response.data?.content || [];
+      const uniqueData = content.filter(
+        (value: any, index: number, self: any[]) =>
+          index === self.findIndex((t: any) => t.name === value.name)
+      );
+      setDesignations(uniqueData);
+    } catch (error: any) {
+      const errorMsg = extractErrorMessage(error, "Failed to load designations");
+      showToast(errorMsg, "error");
+    }
+  };
 
   useEffect(() => {
     localStorage.removeItem("selectedProjectId");
-  getAllEmployees();
-}, []);
+    getAllEmployees();
+  }, []);
 
-      useEffect(()=>{
-      getAllDesignations()
-  },[])
+  useEffect(() => {
+    getAllDesignations();
+  }, []);
+
   const handleView = (employee: LocalEmployee) => {
     setViewingEmployee(employee);
     setIsViewModalOpen(true);
@@ -275,115 +322,118 @@ const confirmDelete = async () => {
 
   try {
     const response = await deleteUser(Number(deleteId));
-
     await getAllEmployees();
-
-    showToast(response.statusMessage || "Employee Deleted Successfully");
+    showToast(response.statusMessage || response.message || "Employee Deleted Successfully");
   } catch (error: any) {
-    const errorMsg =
-      error.response?.data?.message || "Employee Already Linked - Cannot Delete";
+    const errorMsg = extractErrorMessage(error, "Employee Already Linked - Cannot Delete");
     showToast(errorMsg, "error");
   } finally {
     setDeleteId(null);
   }
 };
 
-  const handleStatusChange = (id: string, currentStatus: boolean | number) => {
-     if (String(user?.userId) === String(id)) {
-    showToast("You cannot change your own status", "error");
-    return;
-  }
-  const currentStatusBoolean = currentStatus === true || currentStatus === 1;
-  setStatusModal({
-    id, currentStatus,
-    message: currentStatusBoolean
-      ? "Do you want to change status to Inactive?"
-      : "Do you want to change status to Active?",
-  });
-};
+  const handleStatusChange = (id: string | number, currentStatus: boolean | number | string) => {
+    if (String(user?.userId) === String(id) || String(user?.id) === String(id)) {
+      showToast("You cannot change your own status", "error");
+      return;
+    }
+    const currentStatusBoolean =
+      currentStatus === true || currentStatus === 1 || currentStatus === "active" || currentStatus === "ACTIVE";
+    setStatusModal({
+      id: String(id),
+      currentStatus: currentStatusBoolean,
+      message: currentStatusBoolean
+        ? "Do you want to change status to Inactive?"
+        : "Do you want to change status to Active?",
+    });
+  };
 
-    const confirmStatusChange = async () => {
-      if (!statusModal || statusUpdating) return;
-      setStatusUpdating(true);
-      const currentStatusBoolean =
-        statusModal.currentStatus === true || statusModal.currentStatus === 1;
-      const newStatus = !currentStatusBoolean;
-      try {
-        if (String(user?.userId) === String(statusModal.id)) {
-    showToast("You cannot change your own status", "error");
-    setStatusModal(null);
-    return;
-  }
-        const response = await updateUserStatus(Number(statusModal.id), newStatus);
-        await getAllEmployees();
-        showToast(response.statusMessage || "Status Updated", "success");
+  const confirmStatusChange = async () => {
+    if (!statusModal || statusUpdating) return;
+    setStatusUpdating(true);
+    const currentStatusBoolean = Boolean(statusModal.currentStatus);
+    const newStatus = !currentStatusBoolean;
+    try {
+      if (String(user?.userId) === String(statusModal.id) || String(user?.id) === String(statusModal.id)) {
+        showToast("You cannot change your own status", "error");
         setStatusModal(null);
-      } catch(error: any){
-          const errorMsg =error.response?.data?.message || "Failed to Change Status";
-          showToast(errorMsg, "error");
-            setStatusModal(null);
-      } finally {
-      setStatusUpdating(false);
+        return;
       }
-    };
-
-    const handleKeyDown = (e: React.KeyboardEvent) => {
-  if (e.key === "Enter") {
-    if (deleteId) {
-      confirmDelete();
+      const response = await updateUserStatus(Number(statusModal.id), newStatus);
+      await getAllEmployees();
+      showToast(response.statusMessage || response.message || "Status Updated", "success");
+      setStatusModal(null);
+    } catch (error: any) {
+      const errorMsg = extractErrorMessage(error, "Failed to Change Status");
+      showToast(errorMsg, "error");
+      setStatusModal(null);
+    } finally {
+      setStatusUpdating(false);
     }
-    if (statusModal) {
-      confirmStatusChange();
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      if (deleteId) {
+        confirmDelete();
+      }
+      if (statusModal) {
+        confirmStatusChange();
+      }
     }
-  }
-  if (e.key === "Escape") {
-    setDeleteId(null);
-    setStatusModal(null);
-  }
-};
+    if (e.key === "Escape") {
+      setDeleteId(null);
+      setStatusModal(null);
+    }
+  };
 
-
-
-    const handleInputChange = (field: string, value: string | boolean) => {
-        if (field === "firstName" || field === "lastName") {
-            const stringValue = typeof value === 'string' ? value : '';
-            const formatted = stringValue.charAt(0).toUpperCase() + stringValue.slice(1).toLowerCase();
-            setFormData(prev => ({ ...prev, [field]: formatted }));
-        } else {
-            setFormData(prev => ({ ...prev, [field]: value }));
-        }
-    };
-
+  const handleInputChange = (field: string, value: string | boolean) => {
+    if (field === "firstName" || field === "lastName") {
+      const stringValue = typeof value === 'string' ? value : '';
+      const formatted = stringValue.charAt(0).toUpperCase() + stringValue.slice(1).toLowerCase();
+      setFormData(prev => ({ ...prev, [field]: formatted }));
+    } else {
+      setFormData(prev => ({ ...prev, [field]: value }));
+    }
+  };
 
   //button disable
 
   const isFormChanged = () => {
-  if (!editingEmployee) return true;
+    if (!editingEmployee) return true;
 
-  return (
-    formData.firstName !== editingEmployee.firstName ||
-    formData.lastName !== editingEmployee.lastName ||
-    formData.gender !== editingEmployee.gender ||
-    formData.email !== editingEmployee.email ||
-    formData.contactNo !== editingEmployee.contactNo ||
-    Number(formData.designationId) !== Number(editingEmployee.designationId) ||
-    formData.joinDate !== (editingEmployee.joinDate ? editingEmployee.joinDate.split("T")[0] : "")
-  );
-};
-
-  const formatEmployeeId = (id: string | number) => {
-    const num = typeof id === "string" ? parseInt(id, 10) : id;
-    if (isNaN(num)) return String(id);
-    return `EMP${num.toString().padStart(4, "0")}`;
+    const currentJoin = editingEmployee.joinDate || editingEmployee.joinedDate || "";
+    return (
+      formData.firstName !== (editingEmployee.firstName || "") ||
+      formData.lastName !== (editingEmployee.lastName || "") ||
+      formData.gender !== (editingEmployee.gender || editingEmployee.userGender || "") ||
+      formData.email !== (editingEmployee.email || "") ||
+      formData.contactNo !== (editingEmployee.contactNo || editingEmployee.phone || "") ||
+      Number(formData.designationId) !== Number(editingEmployee.designationId) ||
+      formData.joinDate !== (currentJoin ? currentJoin.split("T")[0] : "")
+    );
   };
 
-  const getStatusBadge = (isActive: boolean | number) => {
-  const active = isActive === true || isActive === 1;
-  if (active) {
-    return <Badge variant="success">Active</Badge>
-  }
-  return <Badge variant="error">Inactive</Badge>
-};
+  const formatEmployeeId = (id: string | number) => {
+    if (!id && id !== 0) return "EMP0001";
+    const str = String(id).trim();
+    if (str.startsWith("EMP")) {
+      return str;
+    }
+    const num = parseInt(str.replace(/\D/g, ""), 10);
+    if (!isNaN(num)) {
+      return `EMP${num.toString().padStart(4, "0")}`;
+    }
+    return str;
+  };
+
+  const getStatusBadge = (isActive: boolean | number | string) => {
+    const active = isActive === true || isActive === 1 || isActive === "active" || isActive === "ACTIVE";
+    if (active) {
+      return <Badge variant="success">Active</Badge>;
+    }
+    return <Badge variant="error">Inactive</Badge>;
+  };
 
   const handlePageChange = (newPage: number) => setCurrentPage(newPage);
   const uniqueDesignations = names;
@@ -483,20 +533,20 @@ const confirmDelete = async () => {
                       <TableCell header className="whitespace-nowrap">Email ID</TableCell>
                       <TableCell header className="whitespace-nowrap">Join Date</TableCell>
                       <TableCell header className="whitespace-nowrap">Status</TableCell>
-                      {(can.employee.edit || can.employee.delete) && <TableCell header className="whitespace-nowrap">Actions</TableCell>}
+                      <TableCell header className="whitespace-nowrap">Actions</TableCell>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {paginatedEmployees.map((emp) => (
                       <TableRow key={emp.id}>
-                        <TableCell className="font-mono text-sm">{formatEmployeeId(emp.id)}</TableCell>
+                        <TableCell className="font-mono text-sm">{emp.employeeCode || formatEmployeeId(emp.id)}</TableCell>
                         <TableCell>{emp.firstName}</TableCell>
                         <TableCell>{emp.lastName}</TableCell>
-                        <TableCell>{emp.gender || "-"}</TableCell>
-                        <TableCell>{emp.designationName || "-"}</TableCell>
-                        <TableCell>{emp.contactNo || "-"}</TableCell>
+                        <TableCell>{emp.gender || emp.userGender || "-"}</TableCell>
+                        <TableCell>{emp.designationName || emp.name || "-"}</TableCell>
+                        <TableCell>{emp.whatsappNumber || emp.contactNo || emp.phone || "-"}</TableCell>
                         <TableCell>{emp.email || "-"}</TableCell>
-                        <TableCell className="text-sm">{emp.joinDate ? new Date(emp.joinDate).toLocaleDateString() : "-"}</TableCell>
+                        <TableCell className="text-sm">{(emp.joinDate || emp.joinedDate) ? (typeof (emp.joinDate || emp.joinedDate) === "string" ? (emp.joinDate || emp.joinedDate).split("T")[0] : new Date(emp.joinDate || emp.joinedDate).toLocaleDateString()) : "-"}</TableCell>
                         {/* <TableCell>{getStatusBadge(emp.isActive)}</TableCell> */}
 
                       <TableCell>
@@ -511,13 +561,13 @@ const confirmDelete = async () => {
                             </TableCell>
 
 
-                        {(can.employee.edit || can.employee.delete) &&
                         <TableCell>
                           <div className="flex items-center space-x-2">
+                            <Button variant="ghost" size="sm" onClick={() => handleView(emp)} className="p-2 hover:bg-blue-50 text-blue-600" title="View Employee"><Eye className="w-4 h-4" /></Button>
                             {can.employee.edit && <Button variant="ghost" size="sm" onClick={() => handleEdit(emp)} className="p-2 hover:bg-yellow-50 text-yellow-600" title="Edit Employee"><Edit className="w-4 h-4" /></Button>}
                             {can.employee.delete && <Button data-modal-target="popup-modal" data-modal-toggle="popup-modal" variant="ghost" size="sm" onClick={() => handleDelete(emp.id)} className="p-2 hover:bg-red-50 text-red-600" title="Delete Employee"><Trash2 className="w-4 h-4" /></Button>}
                           </div>
-                        </TableCell>}
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -629,7 +679,7 @@ const confirmDelete = async () => {
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <Input label="Join date" type="date" max={new Date().toISOString().split('T')[0]} min= "2026-01-01" value={formData.joinDate} onChange={(e) => handleInputChange("joinDate", e.target.value)} required />
+            <Input label="Join date" type="date" max={new Date().toISOString().split('T')[0]} min="2000-01-01" value={formData.joinDate} onChange={(e) => handleInputChange("joinDate", e.target.value)} required />
           </div>
           <div className="flex justify-start space-x-3 pt-2">
           {}
@@ -649,14 +699,14 @@ const confirmDelete = async () => {
                 <div>
                   <h4 className="font-semibold text-gray-900 mb-2">Basic Information</h4>
                   <div className="space-y-2 text-sm">
-                    <p><span className="font-medium">Employee ID:</span> {formatEmployeeId(viewingEmployee.id)}</p>
+                    <p><span className="font-medium">Employee ID:</span> {viewingEmployee.employeeCode || formatEmployeeId(viewingEmployee.id)}</p>
                     <p><span className="font-medium">First Name:</span> {viewingEmployee.firstName}</p>
                     <p><span className="font-medium">Last Name:</span> {viewingEmployee.lastName}</p>
-                    <p><span className="font-medium">Gender:</span> {viewingEmployee.gender}</p>
-                    <p><span className="font-medium">Designation:</span> {viewingEmployee.name}</p>
-                    <p><span className="font-medium">Whatsup Number:</span> {viewingEmployee.contactNo}</p>
-                    <p><span className="font-medium">Email ID:</span> {viewingEmployee.email}</p>
-                    <p><span className="font-medium">Join Date:</span> {viewingEmployee.joinDate ? new Date(viewingEmployee.joinDate).toLocaleDateString() : "-"}</p>
+                    <p><span className="font-medium">Gender:</span> {viewingEmployee.gender || viewingEmployee.userGender || "-"}</p>
+                    <p><span className="font-medium">Designation:</span> {viewingEmployee.designationName || viewingEmployee.name || "-"}</p>
+                    <p><span className="font-medium">Whatsup Number:</span> {viewingEmployee.whatsappNumber || viewingEmployee.contactNo || viewingEmployee.phone || "-"}</p>
+                    <p><span className="font-medium">Email ID:</span> {viewingEmployee.email || "-"}</p>
+                    <p><span className="font-medium">Join Date:</span> {(viewingEmployee.joinDate || viewingEmployee.joinedDate) ? (typeof (viewingEmployee.joinDate || viewingEmployee.joinedDate) === "string" ? (viewingEmployee.joinDate || viewingEmployee.joinedDate).split("T")[0] : new Date(viewingEmployee.joinDate || viewingEmployee.joinedDate).toLocaleDateString()) : "-"}</p>
                     <p><span className="font-medium">Status:</span> {getStatusBadge(viewingEmployee.isActive)}</p>
                   </div>
                 </div>

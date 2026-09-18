@@ -1,4 +1,4 @@
-import { mockDb } from "../../mock/mockData";
+import { getAllUsers, SimpleUser } from "./getallusers";
 
 export interface SearchUserData {
   id: number;
@@ -11,15 +11,7 @@ export interface SearchUserData {
   designationName: string;
 }
 
-export async function searchUsers(searchTerm: string) {
-  const users = mockDb.getUsers();
-  const term = searchTerm.toLowerCase();
-
-  return users.filter(u =>
-    u.firstName.toLowerCase().includes(term) ||
-    u.lastName.toLowerCase().includes(term) ||
-    u.email.toLowerCase().includes(term) ||
-    u.userId.toLowerCase().includes(term) ||
-    u.designationName?.toLowerCase().includes(term)
-  );
+export async function searchUsers(searchTerm: string): Promise<SimpleUser[]> {
+  const result = await getAllUsers(0, 100, { search: searchTerm });
+  return result.data.content;
 }

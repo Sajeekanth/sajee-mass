@@ -27,8 +27,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return AuthService.getCurrentUser() ?? null;
       }
     } catch {
-      console.error('Failed to initialize auth:');
-      
+      // Ignored: fallback to null
     }
     return null;
   });
@@ -39,14 +38,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         if (AuthService.isAuthenticated()) {
           const currentUser = AuthService.getCurrentUser();
-          if (currentUser && !user) {
+          if (currentUser) {
             setUser(currentUser);
+          } else {
+            AuthService.logout();
+            setUser(null);
           }
         } else {
           AuthService.logout();
           setUser(null);
         }
       } catch {
+        AuthService.logout();
         setUser(null);
       }
       setIsLoading(false);
@@ -63,29 +66,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       window.removeEventListener('auth:logout', handleLogout);
     };
   }, []);
-const login = async (email: string, password: string): Promise<boolean> => {
-  try {
-    const response = await AuthService.login(email, password);
 
-    if (response?.data?.token) {
-      const { token, ...userData } = response.data;
-      setUser(userData);
-      return true;
+  const login = async (email: string, password: string): Promise<boolean> => {
+    try {
+      const response = await AuthService.login(email, password);
+
+      if (response?.data?.token) {
+        const { token, ...userData } = response.data;
+        setUser(userData as any);
+        return true;
+      }
+
+      return false;
+    } catch (error: any) {
+      const errorMsg =
+        error.response?.data?.message ||
+        error.message ||
+        'Login failed. Please try again.';
+      throw new Error(errorMsg);
     }
-
-    return false;
-  } catch (error: any) {
-    
-    throw new Error(error.message || 'Login failed. Please try again.');
-  }
-};
+  };
 
   const logout = () => {
     AuthService.logout();
     setUser(null);
   };
 
-  const isAuthenticated = user !== null;
+  const isAuthenticated = user !== null && AuthService.isAuthenticated();
 
   return (
     <AuthContext.Provider value={{ user, login, logout, isLoading, isAuthenticated }}>

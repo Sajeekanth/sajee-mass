@@ -1,10 +1,11 @@
-import { tokenManager } from '../lib/api';
-import { mockDb } from '../mock/mockData';
+import apiClient, { tokenManager } from '../lib/api';
+import { ENDPOINTS } from '../utils/apiendpoint';
 
-interface LoginResponse {
+export interface LoginResponse {
   status: string;
   statusCode: number;
-  statusMessage: string;
+  message?: string;
+  statusMessage?: string;
   data: {
     token: string;
     refreshToken: string;
@@ -18,80 +19,42 @@ interface LoginResponse {
     userType: string;
     roles: string[];
     globalPermissions: string[];
-    projectAccessList: string[];
+    projectAccessList: any[];
   };
 }
 
-const clearAuthDataHelper = (): void => {
-  tokenManager.removeToken();
-  tokenManager.removeRefreshToken();
-  localStorage.removeItem('user');
-  localStorage.removeItem('auth_token');
-  sessionStorage.removeItem('auth_token');
-
-  const APP_STORAGE_KEYS = [
-    'statusWorkflowNodes',
-    'statusWorkflowEdges',
-    'emailConfigTab',
-    'assignments',
-    'selectedProjectId'
-  ];
-
-  APP_STORAGE_KEYS.forEach((key) => {
-    localStorage.removeItem(key);
-    sessionStorage.removeItem(key);
-  });
-};
-
 class AuthService {
-  static async login(email: string, _password?: string): Promise<LoginResponse> {
+  static async login(email: string, password?: string): Promise<LoginResponse> {
     this.clearAuthData();
 
-    // Check if user exists in mock database or create default admin
-    const users = mockDb.getUsers();
-    const matchedUser = users.find(u => u.email.toLowerCase() === email.toLowerCase()) || users[0];
+    const response = await apiClient.post(ENDPOINTS.login, {
+      email: email.trim().toLowerCase(),
+      password: password || '',
+    });
 
-    const mockToken = 'mock_jwt_token_' + btoa(JSON.stringify({
-      sub: matchedUser.email,
-      userId: matchedUser.id,
-      exp: Math.floor(Date.now() / 1000) + (365 * 24 * 3600), // 1 year expiry
-      userType: matchedUser.userType || 'CompanyStaff'
-    }));
+    const envelope = response.data;
+    const payload = envelope?.data;
 
-    const mockRefreshToken = 'mock_refresh_token_' + Date.now();
+    if (!payload || !payload.token) {
+      throw new Error(envelope?.message || 'Login failed: missing token in response');
+    }
 
-    const responseData: LoginResponse = {
-      status: 'success',
-      statusCode: 200,
-      statusMessage: 'Login successful',
-      data: {
-        token: mockToken,
-        refreshToken: mockRefreshToken,
-        type: 'Bearer',
-        userId: matchedUser.id,
-        employeeId: matchedUser.id,
-        companyStaffId: matchedUser.id,
-        email: matchedUser.email,
-        firstName: matchedUser.firstName,
-        lastName: matchedUser.lastName,
-        userType: matchedUser.userType || 'CompanyStaff',
-        roles: matchedUser.roles || ['Super Admin'],
-        globalPermissions: ['ALL_PERMISSIONS'],
-        projectAccessList: ['1', '2', '3'],
-      },
+    localStorage.setItem('authToken', payload.token);
+    if (payload.refreshToken) {
+      localStorage.setItem('refreshToken', payload.refreshToken);
+    }
+    localStorage.setItem('user', JSON.stringify(payload));
+
+    return {
+      status: envelope.status || 'success',
+      statusCode: envelope.statusCode || 200,
+      message: envelope.message || 'Login successful',
+      statusMessage: envelope.message || 'Login successful',
+      data: payload,
     };
-
-    const { token, refreshToken, ...userData } = responseData.data;
-
-    tokenManager.setToken(token);
-    tokenManager.setRefreshToken(refreshToken);
-    localStorage.setItem('user', JSON.stringify(userData));
-
-    return responseData;
   }
 
   static async changePassword(_currentPassword?: string, _newPassword?: string, _confirmPassword?: string): Promise<void> {
-    // Return mock success
     return Promise.resolve();
   }
 
@@ -100,7 +63,7 @@ class AuthService {
   }
 
   static clearAuthData(): void {
-    clearAuthDataHelper();
+    tokenManager.clearAuthData();
   }
 
   static logoutImmediate(): void {
@@ -109,10 +72,14 @@ class AuthService {
 
   static isAuthenticated(): boolean {
     const token = tokenManager.getToken();
-    return token !== null && token.length > 0;
+    return token !== null && token.length > 0 && tokenManager.isTokenValid();
   }
 
   static getCurrentUser(): any | null {
+    const token = tokenManager.getToken();
+    if (!token || !tokenManager.isTokenValid()) {
+      return null;
+    }
     const userStr = localStorage.getItem('user');
     if (userStr) {
       try {
@@ -121,21 +88,7 @@ class AuthService {
         return null;
       }
     }
-    // Fallback default admin user
-    const defaultUser = mockDb.getUsers()[0];
-    const userObj = {
-      userId: defaultUser.id,
-      employeeId: defaultUser.id,
-      companyStaffId: defaultUser.id,
-      email: defaultUser.email,
-      firstName: defaultUser.firstName,
-      lastName: defaultUser.lastName,
-      userType: 'CompanyStaff',
-      roles: ['Super Admin'],
-      globalPermissions: ['ALL_PERMISSIONS'],
-      projectAccessList: ['1', '2', '3'],
-    };
-    return userObj;
+    return null;
   }
 
   static getToken(): string | null {

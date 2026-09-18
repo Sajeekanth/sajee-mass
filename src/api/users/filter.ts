@@ -1,4 +1,4 @@
-import { mockDb } from "../../mock/mockData";
+import { getAllUsers, SimpleUser } from "./getallusers";
 
 export interface UserFilter {
   id: number;
@@ -18,23 +18,14 @@ export async function getUsersByFilter(
   designationId?: number,
   page: number = 1,
   size: number = 10
-) {
-  let users = mockDb.getUsers();
-
-  if (gender) {
-    users = users.filter(u => u.userGender?.toLowerCase() === gender.toLowerCase());
-  }
-  if (status) {
-    users = users.filter(u => u.userStatus?.toLowerCase() === status.toLowerCase());
-  }
-  if (designationId) {
-    users = users.filter(u => u.designationId === Number(designationId));
-  }
-
-  const start = (page - 1) * size;
-  const paged = users.slice(start, start + size);
-
-  return paged;
+): Promise<SimpleUser[]> {
+  const zeroIndexedPage = Math.max(0, page - 1);
+  const result = await getAllUsers(zeroIndexedPage, size, {
+    gender,
+    status,
+    designationId,
+  });
+  return result.data.content;
 }
 
 export const filterUsers = getUsersByFilter;

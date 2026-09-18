@@ -9,6 +9,22 @@ import { createDesignation, Designations, getDesignations,deleteDesignation,putD
 import { usePermission } from '../context/PermissionContext';
 import { OrbitProgress } from 'react-loading-indicators';
 
+const extractErrorMessage = (error: any, fallback: string): string => {
+  if (error?.response?.data?.message) {
+    return error.response.data.message;
+  }
+  if (error?.response?.data?.errors) {
+    if (typeof error.response.data.errors === "object") {
+      return Object.values(error.response.data.errors).join("; ");
+    }
+    return String(error.response.data.errors);
+  }
+  if (error?.message) {
+    return error.message;
+  }
+  return fallback;
+};
+
 const Designation: React.FC = () => {
   const navigate = useNavigate();
   const [designations, setDesignations] = useState<Designations[]>([]);
@@ -41,11 +57,10 @@ const Designation: React.FC = () => {
     try {
       setLoading(true)
       const data = await getDesignations(page,size);
-      console.log('data.data:', data.data); 
       setTotalPages(data.data.totalPages)
       setDesignations(data.data.content); 
-    } catch (error) {
-      showToast('Failed to load designations.', 'error');
+    } catch (error: any) {
+      showToast(extractErrorMessage(error, 'Failed to load designations.'), 'error');
       setLoading(false)
     } finally {
       setLoading(false)
@@ -55,8 +70,6 @@ const Designation: React.FC = () => {
   const [loading, setLoading] = useState(false);
 
  useEffect(() => {
-  
-
   fetchDesignations(currentPage-1,pageSize);
   setToast({ isOpen: false, message: '', type: 'success' });
 }, [currentPage]);
@@ -83,10 +96,10 @@ const Designation: React.FC = () => {
     setIsCreateModalOpen(false);
     resetForm();
 
-    showToast(response.statusMessage, "success");
+    showToast(response.statusMessage || response.message || "Designation created successfully", "success");
 
   } catch(error: any){
-      const errorMsg =error.response?.data?.message || "Failed to Delete Employee";
+      const errorMsg = extractErrorMessage(error, "Failed to create Designation");
       showToast(errorMsg, "error");
   }
 };
@@ -114,11 +127,10 @@ const Designation: React.FC = () => {
     setIsEditModalOpen(false);
     setEditingDesignation(null);
     resetForm();
-    showToast(response.statusMessage);
-  } catch (error) {
-    const errorMsg =error.response?.data?.message || "Failed to Change Status";
+    showToast(response.statusMessage || response.message || "Designation updated successfully");
+  } catch (error: any) {
+    const errorMsg = extractErrorMessage(error, "Failed to update Designation");
     showToast(errorMsg, "error");
-    
   }
 };
 
@@ -129,9 +141,13 @@ const Designation: React.FC = () => {
     fetchDesignations(0, pageSize)
     setIsDeleteModalOpen(false);
     setDeletingDesignation(null);
-    showToast(response.statusMessage);
-  } catch (error) {
-    showToast('Cannot delete designation. It is currently assigned employees ,Please reassign or delete those employees first.', 'error');
+    showToast(response.statusMessage || response.message || "Designation deleted successfully");
+  } catch (error: any) {
+    const errorMsg = extractErrorMessage(
+      error,
+      "Cannot delete designation. It is currently assigned to employees. Please reassign or delete those employees first."
+    );
+    showToast(errorMsg, "error");
   }
 };
 

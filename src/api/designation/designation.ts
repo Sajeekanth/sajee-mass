@@ -1,4 +1,5 @@
-import { mockDb } from "../../mock/mockData";
+import apiClient from "../../lib/api";
+import { ENDPOINTS } from "../../utils/apiendpoint";
 
 export interface Designations {
   id: number;
@@ -10,16 +11,27 @@ export interface CreateDesignations {
 }
 
 export async function getDesignations(_page: number = 0, _size: number = 100) {
-  const designations = mockDb.getDesignations();
+  const response = await apiClient.get(ENDPOINTS.designation, {
+    params: { page: _page, size: _size },
+  });
+  const envelope = response.data;
+  const paged = envelope?.data || {};
+  const content = Array.isArray(paged.content)
+    ? paged.content.map((d: any) => ({ id: d.id, name: d.name }))
+    : Array.isArray(paged)
+    ? paged.map((d: any) => ({ id: d.id, name: d.name }))
+    : [];
+
   return {
-    status: 'success',
-    statusCode: 200,
+    status: envelope?.status || "success",
+    statusCode: envelope?.statusCode || 200,
+    message: envelope?.message || "Designations retrieved successfully",
     data: {
-      content: designations.map(d => ({ id: d.id, name: d.designationName })),
-      totalElements: designations.length,
-      totalPages: 1,
-      size: 100,
-      number: 0,
+      content,
+      totalElements: paged.totalElements ?? content.length,
+      totalPages: paged.totalPages ?? 1,
+      size: paged.size ?? _size,
+      number: paged.number ?? _page,
     },
   };
 }
@@ -27,32 +39,49 @@ export async function getDesignations(_page: number = 0, _size: number = 100) {
 export const getAllDesignations = getDesignations;
 
 export async function createDesignation(data: CreateDesignations) {
-  const created = mockDb.createDesignation(data.name);
+  const payload = {
+    name: data.name?.trim(),
+    designationName: data.name?.trim(),
+  };
+  const response = await apiClient.post(ENDPOINTS.designation, payload);
+  const envelope = response.data;
+  const resData = envelope?.data || {};
   return {
-    status: 'success',
-    statusCode: 200,
-    message: 'Designation created successfully',
-    data: { id: created.id, name: created.designationName },
+    status: envelope?.status || "success",
+    statusCode: envelope?.statusCode || 201,
+    message: envelope?.message || "Designation created successfully",
+    statusMessage: envelope?.message || "Designation created successfully",
+    data: { id: resData.id, name: resData.name || resData.designationName },
   };
 }
 
 export async function putDesignation(id: number, data: CreateDesignations) {
-  const updated = mockDb.updateDesignation(id, data.name);
+  const payload = {
+    name: data.name?.trim(),
+    designationName: data.name?.trim(),
+  };
+  const response = await apiClient.put(ENDPOINTS.designationById(id), payload);
+  const envelope = response.data;
+  const resData = envelope?.data || {};
   return {
-    status: 'success',
-    statusCode: 200,
-    message: 'Designation updated successfully',
-    data: updated ? { id: updated.id, name: updated.designationName } : null,
+    status: envelope?.status || "success",
+    statusCode: envelope?.statusCode || 200,
+    message: envelope?.message || "Designation updated successfully",
+    statusMessage: envelope?.message || "Designation updated successfully",
+    data: { id: resData.id || id, name: resData.name || resData.designationName || payload.name },
   };
 }
 
 export const updateDesignation = putDesignation;
 
 export async function deleteDesignation(id: number) {
-  mockDb.deleteDesignation(id);
+  const response = await apiClient.delete(ENDPOINTS.designationById(id));
+  const envelope = response.data;
   return {
-    status: 'success',
-    statusCode: 200,
-    message: 'Designation deleted successfully',
+    status: envelope?.status || "success",
+    statusCode: envelope?.statusCode || 200,
+    message: envelope?.message || "Designation deleted successfully",
+    statusMessage: envelope?.message || "Designation deleted successfully",
+    data: null,
   };
 }

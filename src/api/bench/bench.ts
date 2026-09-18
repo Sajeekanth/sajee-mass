@@ -1,95 +1,82 @@
-import { mockDb } from "../../mock/mockData";
+import apiClient from "../../lib/api";
+import { ENDPOINTS } from "../../utils/apiendpoint";
 
 export async function getBenchList(): Promise<any[]> {
-  const users = mockDb.getUsers();
-  return users
-    .filter(u => (u.availabilityPercent ?? 100) > 0)
-    .map(u => ({
-      id: u.id,
-      employeeId: u.id,
-      userId: u.userId,
-      firstName: u.firstName,
-      lastName: u.lastName,
-      email: u.email,
-      designationName: u.designationName,
-      skills: u.skills || [],
-      experience: u.experience || 2,
-      availabilityPercent: u.availabilityPercent ?? 100,
-      benchStartDate: u.joinedDate || '2026-01-01',
-      benchEndDate: '2026-12-31',
-    }));
+  const response = await apiClient.get(ENDPOINTS.benchEmployee);
+  const envelope = response.data;
+  const paged = envelope?.data;
+  const list = Array.isArray(paged?.content)
+    ? paged.content
+    : Array.isArray(paged)
+    ? paged
+    : [];
+  return list;
 }
 
-export const getViewAllocation = async (userId: string) => {
-  const user = mockDb.getUserById(Number(userId));
+export const getViewAllocation = async (userId: string | number) => {
+  const response = await apiClient.get(`${ENDPOINTS.projectAllocation}/employee/${userId}`);
+  const envelope = response.data;
   return {
-    data: {
-      availablePeriods: [
-        {
-          period: '2026-01-01 to 2026-12-31',
-          percentage: user?.availabilityPercent ?? 100,
-          project: user?.currentProjects?.[0] || 'Bench Resource',
-          userId: Number(userId),
-        },
-      ],
-    },
+    data: envelope?.data || {},
   };
 };
 
-export async function getEmployeeDetails(id: string): Promise<any> {
-  return mockDb.getUserById(Number(id));
+export async function getEmployeeDetails(id: string | number): Promise<any> {
+  const response = await apiClient.get(ENDPOINTS.employeeById(Number(id)));
+  return response.data;
 }
 
 export const getBenchAvailability = async (page: number = 0, size: number = 5, filters: any = {}) => {
-  const users = mockDb.getUsers();
-  let bench = users.filter(u => (u.availabilityPercent ?? 100) > 0);
+  const params: Record<string, any> = {
+    page,
+    size,
+  };
 
   if (filters.designation) {
-    bench = bench.filter(u => u.designationName?.toLowerCase() === filters.designation.toLowerCase());
+    params.designation = filters.designation;
   }
-  if (filters.minAvailable) {
-    bench = bench.filter(u => (u.availabilityPercent ?? 100) >= Number(filters.minAvailable));
+  if (filters.minAvailable != null) {
+    params.minAvailable = filters.minAvailable;
+  } else if (filters.availability != null) {
+    params.minAvailable = filters.availability;
+  }
+  if (filters.startDate) {
+    params.startDate = filters.startDate;
+  }
+  if (filters.endDate) {
+    params.endDate = filters.endDate;
+  }
+  if (filters.search) {
+    params.search = filters.search;
+  }
+  if (filters.firstName) {
+    params.firstName = filters.firstName;
+  }
+  if (filters.lastName) {
+    params.lastName = filters.lastName;
   }
 
-  const start = page * size;
-  const paged = bench.slice(start, start + size);
-
+  const response = await apiClient.get(ENDPOINTS.benchEmployee, { params });
+  const envelope = response.data;
   return {
-    status: 'success',
-    statusCode: 200,
-    data: {
-      content: paged.map(u => ({
-        id: u.id,
-        employeeId: u.id,
-        userId: u.userId,
-        firstName: u.firstName,
-        lastName: u.lastName,
-        designation: u.designationName,
-        skills: u.skills || [],
-        experience: u.experience || 2,
-        availability: u.availabilityPercent ?? 100,
-        status: (u.availabilityPercent ?? 100) === 100 ? 'Available' : 'Partially Allocated',
-        benchStartDate: '2026-01-01',
-        benchEndDate: '2026-12-31',
-      })),
-      totalElements: bench.length,
-      totalPages: Math.ceil(bench.length / size),
-      size,
-      number: page,
-    },
+    status: envelope?.status || 'success',
+    statusCode: envelope?.statusCode || 200,
+    data: envelope?.data || {},
   };
 };
 
-export const getEmployeeProjectHistory = async (userId: string) => {
-  const user = mockDb.getUserById(Number(userId));
+export const getEmployeeProjectHistory = async (userId: string | number) => {
+  const response = await apiClient.get(`${ENDPOINTS.projectAllocation}/employee/${userId}`);
+  const envelope = response.data;
+  const allocations = envelope?.data?.allocations || [];
   return {
-    data: (user?.currentProjects || []).map((p, idx) => ({
-      id: idx + 1,
-      projectName: p,
-      roleName: user?.roleName || 'Developer',
-      allocationPercent: 50,
-      startDate: '2025-06-01',
-      endDate: '2026-12-31',
+    data: allocations.map((a: any) => ({
+      id: a.id,
+      projectName: a.projectName,
+      roleName: a.roleName,
+      allocationPercent: a.allocationPercent,
+      startDate: a.startDate,
+      endDate: a.endDate,
     })),
   };
 };

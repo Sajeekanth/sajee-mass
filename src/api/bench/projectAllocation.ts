@@ -1,16 +1,19 @@
-import { mockDb } from "../../mock/mockData";
-import { formatDateTime } from "../../utils/formatDateTime";
+import apiClient from "../../lib/api";
+import { ENDPOINTS } from "../../utils/apiendpoint";
 
 interface AvailablePeriod {
   period: string;
   percentage: number;
   project: string;
   userId: number;
+  roleId?: number;
+  roleName?: string;
 }
 
 export interface ViewAllocationsResponse {
   data: {
     availablePeriods: AvailablePeriod[];
+    allocations?: any[];
   };
   message: string;
   status: string;
@@ -23,58 +26,66 @@ export interface ProjectAllocationPayload {
   roleId: number;
   allocationPercent: number;
   startDate: string;
-  endDate: string;
+  endDate?: string;
 }
 
 export async function postProjectAllocations(payload: ProjectAllocationPayload) {
-  mockDb.allocateBenchResource(payload.employeeId, payload.projectId, payload.allocationPercent);
+  const response = await apiClient.post(ENDPOINTS.projectAllocation, {
+    employeeId: Number(payload.employeeId),
+    projectId: Number(payload.projectId),
+    roleId: Number(payload.roleId),
+    allocationPercent: Number(payload.allocationPercent),
+    startDate: payload.startDate,
+    endDate: payload.endDate || null,
+  });
+  const envelope = response.data;
   return {
-    status: 'success',
-    statusCode: 200,
-    message: 'Project allocation created successfully',
-    data: payload,
+    status: envelope?.status || 'success',
+    statusCode: envelope?.statusCode || 201,
+    message: envelope?.message || 'Project allocation created successfully',
+    data: envelope?.data,
   };
 }
 
 export async function getProjectAllocationsById(projectId: string | number) {
-  const users = mockDb.getUsers();
-  const proj = mockDb.getProjectById(projectId);
-  const projName = proj?.name || proj?.projectName || 'Project';
-
-  const allocatedUsers = users.filter(u => u.currentProjects?.includes(projName) || u.id === 1 || u.id === 2 || u.id === 3);
-
+  const response = await apiClient.get(`${ENDPOINTS.projectAllocation}/${projectId}`);
+  const envelope = response.data;
+  const list = Array.isArray(envelope?.data?.content)
+    ? envelope.data.content
+    : Array.isArray(envelope?.data)
+    ? envelope.data
+    : [];
   return {
-    status: 'success',
-    statusCode: 200,
-    data: allocatedUsers.map(u => ({
-      id: u.id,
-      employeeId: u.id,
-      employeeName: `${u.firstName} ${u.lastName}`,
-      roleId: u.roleId || 4,
-      roleName: u.roleName || 'Developer',
-      designationName: u.designationName || 'Software Engineer',
-      allocationPercent: 50,
-      startDate: '2025-01-01',
-      endDate: '2026-12-31',
-    })),
+    status: envelope?.status || 'success',
+    statusCode: envelope?.statusCode || 200,
+    data: list,
   };
 }
 
 export async function updateProjectAllocation(id: string | number, payload: any) {
+  const response = await apiClient.put(`${ENDPOINTS.projectAllocation}/${id}`, {
+    roleId: payload.roleId != null ? Number(payload.roleId) : undefined,
+    allocationPercent: payload.allocationPercent != null ? Number(payload.allocationPercent) : undefined,
+    startDate: payload.startDate || undefined,
+    endDate: payload.endDate || null,
+  });
+  const envelope = response.data;
   return {
-    status: 'success',
-    statusCode: 200,
-    message: 'Project allocation updated successfully',
-    data: { id, ...payload },
+    status: envelope?.status || 'success',
+    statusCode: envelope?.statusCode || 200,
+    message: envelope?.message || 'Project allocation updated successfully',
+    data: envelope?.data,
   };
 }
 
 export async function deleteProjectAllocation(id: string | number, _forceDeallocate: boolean = false) {
+  const response = await apiClient.delete(`${ENDPOINTS.projectAllocation}/${id}`);
+  const envelope = response.data;
   return {
-    status: 'success',
-    statusCode: 200,
-    message: 'Project allocation removed successfully',
-    data: { id },
+    status: envelope?.status || 'success',
+    statusCode: envelope?.statusCode || 200,
+    message: envelope?.message || 'Project allocation removed successfully',
+    data: envelope?.data,
   };
 }
 
@@ -82,24 +93,40 @@ export async function filterProjectAllocations(projectId: string | number, _filt
   return getProjectAllocationsById(projectId);
 }
 
-export async function getMaxAvailablePercentage(userId: string | number, _startDate?: string, _endDate?: string) {
-  const user = mockDb.getUserById(Number(userId));
-  return { data: user?.availabilityPercent ?? 100 };
+export async function getMaxAvailablePercentage(userId: string | number, startDate?: string, endDate?: string) {
+  const params: Record<string, string> = {};
+  if (startDate) params.startDate = startDate;
+  if (endDate) params.endDate = endDate;
+
+  const response = await apiClient.get(`${ENDPOINTS.projectAllocation}/employee/${userId}/availability`, { params });
+  const envelope = response.data;
+  const maxAvailable = typeof envelope?.data === 'number' ? envelope.data : 100;
+  return {
+    data: maxAvailable,
+    maxAvailablePercentage: maxAvailable,
+  };
 }
 
 export async function getDevelopersWithRolesByProjectId(projectId: number | string | undefined) {
-  if (!projectId) return [];
-  const users = mockDb.getUsers();
+  if (!projectId) return { status: 'success', statusCode: 200, data: [] };
+  const response = await apiClient.get(`${ENDPOINTS.projectAllocation}/${projectId}`);
+  const envelope = response.data;
+  const list = Array.isArray(envelope?.data?.content)
+    ? envelope.data.content
+    : Array.isArray(envelope?.data)
+    ? envelope.data
+    : [];
+
   return {
     status: 'success',
     statusCode: 200,
-    data: users.map(u => ({
-      id: u.id,
-      employeeId: u.id,
-      name: `${u.firstName} ${u.lastName}`,
+    data: list.map((u: any) => ({
+      id: u.employeeId || u.id,
+      employeeId: u.employeeId || u.id,
+      name: u.userFullName || `${u.firstName} ${u.lastName}`,
       email: u.email,
       role: u.roleName || 'Developer',
-      roleId: u.roleId || 4,
+      roleId: u.roleId,
     })),
   };
 }
@@ -121,22 +148,17 @@ export async function allocateDeveloperToSubModule(_moduleId: number, _projectAl
 }
 
 export async function getViewAllocations(userId: string | number): Promise<ViewAllocationsResponse> {
-  const user = mockDb.getUserById(Number(userId));
-  const availablePeriods = [
-    {
-      period: `${formatDateTime('2025-01-01')} to ${formatDateTime('2026-12-31')}`,
-      percentage: user?.availabilityPercent ?? 100,
-      roleId: user?.roleId || 4,
-      roleName: user?.roleName || 'Developer',
-      project: user?.currentProjects?.[0] || 'Core Project',
-      userId: Number(userId),
-    },
-  ];
+  const response = await apiClient.get(`${ENDPOINTS.projectAllocation}/employee/${userId}`);
+  const envelope = response.data;
+  const periods = envelope?.data?.availablePeriods || [];
 
   return {
-    data: { availablePeriods },
-    message: 'Success',
-    status: 'success',
-    statusCode: 200,
+    data: {
+      availablePeriods: periods,
+      allocations: envelope?.data?.allocations || [],
+    },
+    message: envelope?.message || 'Success',
+    status: envelope?.status || 'success',
+    statusCode: envelope?.statusCode || 200,
   };
 }

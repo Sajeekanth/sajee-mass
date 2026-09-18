@@ -367,6 +367,7 @@ const confirmDelete = async () => {
       const errorMsg = extractErrorMessage(error, "Failed to Change Status");
       showToast(errorMsg, "error");
       setStatusModal(null);
+      await getAllEmployees().catch(() => {});
     } finally {
       setStatusUpdating(false);
     }

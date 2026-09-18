@@ -1,5 +1,5 @@
 import { Employee } from '../../types/index';
-import { mockDb } from '../../mock/mockData';
+import { getBenchAvailability } from './bench';
 
 export interface BenchSearchParams {
   startDate?: string;
@@ -11,38 +11,29 @@ export interface BenchSearchParams {
 }
 
 export const searchBenchEmployees = async (params: BenchSearchParams): Promise<Employee[]> => {
-  const users = mockDb.getUsers();
-  let filtered = users.filter(u => (u.availabilityPercent ?? 100) > 0);
+  const response = await getBenchAvailability(0, 1000, params);
+  const benchData = Array.isArray(response.data?.content)
+    ? response.data.content
+    : Array.isArray(response.data)
+    ? response.data
+    : [];
 
-  if (params.designation) {
-    filtered = filtered.filter(u => u.designationName?.toLowerCase().includes(params.designation!.toLowerCase()));
-  }
-  if (params.firstName) {
-    filtered = filtered.filter(u => u.firstName.toLowerCase().includes(params.firstName!.toLowerCase()));
-  }
-  if (params.lastName) {
-    filtered = filtered.filter(u => u.lastName.toLowerCase().includes(params.lastName!.toLowerCase()));
-  }
-  if (params.availability) {
-    filtered = filtered.filter(u => (u.availabilityPercent ?? 100) >= params.availability!);
-  }
-
-  return filtered.map(u => ({
-    id: String(u.id),
+  return benchData.map((u: any) => ({
+    id: String(u.id || u.employeeId),
     firstName: u.firstName,
     lastName: u.lastName,
-    gender: (u.userGender as any) || 'Male',
+    gender: 'Male',
     email: u.email,
-    phone: u.phone || '',
-    designation: u.designationName || 'Software Engineer',
-    experience: u.experience || 2,
-    joinedDate: u.joinedDate || '2023-01-01',
-    skills: u.skills || [],
-    currentProjects: u.currentProjects || [],
-    availability: u.availabilityPercent ?? 100,
+    phone: u.contactNo || u.phone || '',
+    designation: u.designationName || u.designation || 'Software Engineer',
+    experience: 2,
+    joinedDate: '2023-01-01',
+    skills: [],
+    currentProjects: [],
+    availability: u.availability ?? u.availabilityPercent ?? 100,
     status: 'active',
-    createdAt: u.createdAt || new Date().toISOString(),
-    updatedAt: u.updatedAt || new Date().toISOString(),
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
   }));
 };
 

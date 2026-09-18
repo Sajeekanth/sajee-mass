@@ -57,8 +57,10 @@ const Role: React.FC = () => {
     try {
       setLoading(true)
       const res = await getAllRoles(page, pageSize);
-      setTotalPages(res.data.totalPages);
-      setRoles(res.data.content);
+      const totalPages = res?.data?.totalPages ?? (res as any)?.totalPages ?? 0;
+      const content = res?.data?.content ?? (res as any)?.content ?? (Array.isArray(res?.data) ? res.data : []);
+      setTotalPages(totalPages);
+      setRoles(content || []);
     } catch (error) {
       setLoading(false)
       showToast("Failed to fetch roles", "error");
@@ -169,7 +171,7 @@ const handleDelete = async () => {
   const openEditModal = (role: Role) => {
     console.log("role.type:", role.type);
     setEditingRole(role);
-    setFormData({ name: role.name, type: role.type });
+    setFormData({ name: role.name, type: role.type || "" });
     setIsEditModalOpen(true);
   };
   const openDeleteModal = (role: Role) => {

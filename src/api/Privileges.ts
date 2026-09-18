@@ -1,4 +1,5 @@
-import { mockDb, INITIAL_PERMISSIONS } from "../mock/mockData";
+import apiClient from "../lib/api";
+import { INITIAL_PERMISSIONS } from "../mock/mockData";
 
 export interface Permission {
   permissionId: number;
@@ -60,6 +61,22 @@ export interface RolePermissionByRoleResponse {
 }
 
 export const getAllPrivileges = async (): Promise<GetPrivilegesResponse> => {
+  try {
+    const response = await apiClient.get<any>('/api/v1/permission?grouped=true');
+    const responseData = response.data?.data || response.data;
+
+    if (Array.isArray(responseData)) {
+      return {
+        status: 'success',
+        statusCode: 200,
+        statusMessage: 'Success',
+        data: responseData,
+      };
+    }
+  } catch (error) {
+    console.warn('Live getAllPrivileges failed, using initial definitions:', error);
+  }
+
   return {
     status: 'success',
     statusCode: 200,
@@ -68,44 +85,71 @@ export const getAllPrivileges = async (): Promise<GetPrivilegesResponse> => {
   };
 };
 
-export const getRolePermission = async (_roleId: number): Promise<RolePermissionResponse> => {
-  const allIds: number[] = [];
-  INITIAL_PERMISSIONS.forEach(m => {
-    m.permissions.forEach(p => allIds.push(p.permissionId));
-  });
+export const getRolePermission = async (roleId: number): Promise<RolePermissionResponse> => {
+  try {
+    const response = await apiClient.get<any>(`/api/v1/role/${roleId}/permission`);
+    const payload = response.data?.data || response.data;
+    const permissionIds: number[] = Array.isArray(payload?.permissionIds) ? payload.permissionIds : [];
 
-  return {
-    status: 'success',
-    statusCode: 200,
-    statusMessage: 'Success',
-    data: {
-      permissionIds: allIds,
-      messages: ['All permissions assigned'],
-    },
-  };
+    return {
+      status: 'success',
+      statusCode: 200,
+      statusMessage: response.data?.message || 'Permissions loaded successfully',
+      data: {
+        permissionIds,
+        messages: payload?.messages || ['Permissions loaded successfully'],
+      },
+    };
+  } catch (error) {
+    console.warn(`Failed to fetch live role permissions for role ${roleId}:`, error);
+    return {
+      status: 'success',
+      statusCode: 200,
+      statusMessage: 'Success',
+      data: {
+        permissionIds: [],
+        messages: ['No permissions assigned'],
+      },
+    };
+  }
 };
 
 export const getRolePermissionByRoleId = async (
-  _roleId: number | string
+  roleId: number | string
 ): Promise<RolePermissionByRoleResponse> => {
-  const allIds: PermissionId[] = [];
-  INITIAL_PERMISSIONS.forEach(m => {
-    m.permissions.forEach(p => allIds.push(p.permissionId));
-  });
+  try {
+    const response = await apiClient.get<any>(`/api/v1/role/${roleId}/permission`);
+    const payload = response.data?.data || response.data;
+    const permissionIds: PermissionId[] = Array.isArray(payload?.permissionIds) ? payload.permissionIds : [];
 
-  return {
-    permissionIds: allIds,
-  };
+    return {
+      permissionIds,
+    };
+  } catch (error) {
+    console.warn(`Failed to fetch role permissions for role ${roleId}:`, error);
+    return {
+      permissionIds: [],
+    };
+  }
 };
 
-export const addRolePermission = async (roleId: number, rolePermissions: PermissionAssignmentChange[]): Promise<RolePermissionResponse> => {
+export const addRolePermission = async (
+  roleId: number,
+  rolePermissions: PermissionAssignmentChange[]
+): Promise<RolePermissionResponse> => {
+  const response = await apiClient.put<any>(`/api/v1/role/${roleId}/permission`, rolePermissions);
+  const payload = response.data?.data || response.data;
+  const permissionIds: number[] = Array.isArray(payload?.permissionIds)
+    ? payload.permissionIds
+    : rolePermissions.map(p => Number(p.permissionId));
+
   return {
     status: 'success',
     statusCode: 200,
-    statusMessage: 'Role permissions updated successfully',
+    statusMessage: response.data?.message || 'Role permissions updated successfully',
     data: {
-      permissionIds: rolePermissions.map(p => Number(p.permissionId)),
-      messages: ['Permissions updated successfully'],
+      permissionIds,
+      messages: payload?.messages || ['Permissions updated successfully'],
     },
   };
 };
@@ -128,7 +172,10 @@ export const getAllEmployeePermission = async (_employeeId: number): Promise<Use
   };
 };
 
-export const addEmployeePermission = async (_employeeId: number, payload: EmployeePermissionUpdatePayload): Promise<UserPrivilegeResponse> => {
+export const addEmployeePermission = async (
+  _employeeId: number,
+  payload: EmployeePermissionUpdatePayload
+): Promise<UserPrivilegeResponse> => {
   return {
     status: 'success',
     statusCode: 200,

@@ -1,12 +1,18 @@
-import { mockDb } from "../../mock/mockData";
+import apiClient from "../../lib/api";
+import { ENDPOINTS } from "../../utils/apiendpoint";
 
 export interface Role {
   id: number;
   name: string;
+  roleName?: string;
+  type?: string;
+  roleType?: string;
+  description?: string;
 }
 
 export interface GetRolesResponse {
   status: string;
+  statusCode?: number;
   message: string;
   data: {
     content: Role[];
@@ -17,17 +23,8 @@ export interface GetRolesResponse {
   };
 }
 
-export const getAllRoles = async (_page: number = 0, _pageSize: number = 100): Promise<GetRolesResponse> => {
-  const roles = mockDb.getRoles();
-  return {
-    status: 'success',
-    message: 'Roles fetched successfully',
-    data: {
-      content: roles.map(r => ({ id: r.id, name: r.roleName })),
-      totalElements: roles.length,
-      totalPages: 1,
-      pageNumber: 0,
-      pageSize: 100,
-    },
-  };
+export const getAllRoles = async (page: number = 0, pageSize: number = 100): Promise<GetRolesResponse> => {
+  const url = ENDPOINTS.role ? ENDPOINTS.role(page, pageSize) : `/api/v1/role?page=${page}&size=${pageSize}`;
+  const response = await apiClient.get<GetRolesResponse>(url);
+  return response.data;
 };

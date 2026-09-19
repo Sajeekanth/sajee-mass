@@ -359,10 +359,36 @@ const StatusWorkflow: React.FC = () => {
 
   const onConnect = useCallback(
     (params: Connection) => {
+      if (!params.source || !params.target) return;
+
+      if (params.source === params.target) {
+        setSaveMessage({
+          type: "error",
+          text: "Self-transitions are not allowed. Source and destination status must differ.",
+        });
+        setTimeout(() => setSaveMessage(null), 4000);
+        return;
+      }
+
+      const isDuplicate = edges.some(
+        (edge) => edge.source === params.source && edge.target === params.target,
+      );
+
+      if (isDuplicate) {
+        setSaveMessage({
+          type: "error",
+          text: "This workflow transition already exists.",
+        });
+        setTimeout(() => setSaveMessage(null), 4000);
+        return;
+      }
+
+      setSaveMessage(null);
+
       const newEdge: Edge = {
         id: `e${params.source}-${params.target}`,
-        source: params.source!,
-        target: params.target!,
+        source: params.source,
+        target: params.target,
         type: "custom",
         animated: true,
         markerEnd: {
@@ -374,7 +400,7 @@ const StatusWorkflow: React.FC = () => {
       };
       setEdges((eds: Edge[]) => addEdge(newEdge, eds));
     },
-    [setEdges],
+    [edges, setEdges],
   );
 
   
@@ -399,33 +425,67 @@ const StatusWorkflow: React.FC = () => {
 
   
   const convertWorkflowToApiFormat = useCallback(() => {
-    const apiNodes = nodes.map((node) => {
-      const status = statusTypes.find((s) => s.name === node.data.label);
+    const apiNodes = nodes
+      .map((node) => {
+        const status =
+          statusTypes.find((s) => s.name === node.data.label) ||
+          (node.id.startsWith("status-")
+            ? statusTypes.find((s) => String(s.id) === node.id.replace("status-", ""))
+            : undefined);
 
-      return {
-        id: Number(status?.id),
-        positionX: node.position.x,
-        positionY: node.position.y,
-      };
-    });
+        const rawId = status?.id
+          ? Number(status.id)
+          : node.id.startsWith("status-")
+          ? Number(node.id.replace("status-", ""))
+          : NaN;
 
-    const connections = edges.map((edge) => {
+        return {
+          id: rawId,
+          positionX: Math.round(node.position.x),
+          positionY: Math.round(node.position.y),
+        };
+      })
+      .filter((n) => !isNaN(n.id) && n.id > 0);
+
+    const seen = new Set<string>();
+    const connections: { fromStatusId: number; toStatusId: number }[] = [];
+
+    for (const edge of edges) {
       const sourceNode = nodes.find((node) => node.id === edge.source);
       const targetNode = nodes.find((node) => node.id === edge.target);
 
-      const sourceStatus = statusTypes.find(
-        (status) => status.name === sourceNode?.data.label,
-      );
+      const sourceStatus =
+        statusTypes.find((status) => status.name === sourceNode?.data.label) ||
+        (sourceNode?.id.startsWith("status-")
+          ? statusTypes.find((s) => String(s.id) === sourceNode.id.replace("status-", ""))
+          : undefined);
 
-      const targetStatus = statusTypes.find(
-        (status) => status.name === targetNode?.data.label,
-      );
+      const targetStatus =
+        statusTypes.find((status) => status.name === targetNode?.data.label) ||
+        (targetNode?.id.startsWith("status-")
+          ? statusTypes.find((s) => String(s.id) === targetNode.id.replace("status-", ""))
+          : undefined);
 
-      return {
-        fromStatusId: Number(sourceStatus?.id),
-        toStatusId: Number(targetStatus?.id),
-      };
-    });
+      const fromId = sourceStatus?.id
+        ? Number(sourceStatus.id)
+        : sourceNode?.id.startsWith("status-")
+        ? Number(sourceNode.id.replace("status-", ""))
+        : NaN;
+
+      const toId = targetStatus?.id
+        ? Number(targetStatus.id)
+        : targetNode?.id.startsWith("status-")
+        ? Number(targetNode.id.replace("status-", ""))
+        : NaN;
+
+      if (!isNaN(fromId) && !isNaN(toId) && fromId > 0 && toId > 0 && fromId !== toId) {
+        const key = `${fromId}->${toId}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          connections.push({ fromStatusId: fromId, toStatusId: toId });
+        }
+      }
+    }
 
     return {
       nodes: apiNodes,

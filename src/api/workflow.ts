@@ -1,17 +1,19 @@
-import { mockDb } from "../mock/mockData";
+import apiClient from "../lib/api";
+import { ENDPOINTS } from "../utils/apiendpoint";
 
-interface WorkflowNodeRequest {
+export interface WorkflowNodeRequest {
   id: number;
   positionX: number;
   positionY: number;
 }
 
-interface WorkflowConnectionRequest {
+export interface WorkflowConnectionRequest {
   fromStatusId: number;
   toStatusId: number;
 }
 
 export interface SaveWorkflowRequest {
+  projectId?: number;
   nodes: WorkflowNodeRequest[];
   connections: WorkflowConnectionRequest[];
 }
@@ -23,16 +25,23 @@ export interface SaveWorkflowResponse {
   statusCode: number;
 }
 
-interface StatusInfo {
+export interface StatusInfo {
   id: number;
   name: string;
   color: string;
+  type?: string;
+  description?: string;
+  positionX?: number;
+  positionY?: number;
 }
 
-interface WorkflowTransitionResponse {
+export interface WorkflowTransitionResponse {
   id: number;
+  projectId?: number;
+  projectName?: string;
   fromStatus: StatusInfo;
   toStatus: StatusInfo;
+  isActive?: boolean;
 }
 
 export interface GetAllWorkflowsResponse {
@@ -42,52 +51,129 @@ export interface GetAllWorkflowsResponse {
   statusCode: number;
 }
 
+export interface NextStatusItem {
+  id: number;
+  name: string;
+  color: string;
+  type?: string;
+  toStatus: StatusInfo;
+}
+
 export interface NextStatusResponse {
   status: string;
   statusMessage: string;
-  data: StatusInfo[];
+  data: NextStatusItem[];
   statusCode: number;
 }
 
-export const getAllWorkflows = async (): Promise<GetAllWorkflowsResponse> => {
-  const statuses = mockDb.getStatuses();
-  const transitions: WorkflowTransitionResponse[] = [];
-  
-  for (let i = 0; i < statuses.length - 1; i++) {
-    transitions.push({
-      id: i + 1,
-      fromStatus: { id: statuses[i].id, name: statuses[i].statusName, color: statuses[i].color },
-      toStatus: { id: statuses[i + 1].id, name: statuses[i + 1].statusName, color: statuses[i + 1].color },
-    });
-  }
+export const getAllWorkflows = async (projectId?: number): Promise<GetAllWorkflowsResponse> => {
+  const response = await apiClient.get(ENDPOINTS.workflow, {
+    params: projectId ? { projectId } : undefined,
+  });
+
+  const envelope = response.data;
+  const rawList = envelope?.data ?? envelope ?? [];
+  const data: WorkflowTransitionResponse[] = Array.isArray(rawList) ? rawList : [];
 
   return {
-    status: 'success',
-    statusMessage: 'Workflows fetched successfully',
-    statusCode: 200,
-    data: transitions,
+    status: envelope?.status || "success",
+    statusMessage: envelope?.message || "Workflows fetched successfully",
+    statusCode: response.status || 200,
+    data,
   };
+};
+
+export const getWorkflowById = async (id: number): Promise<WorkflowTransitionResponse> => {
+  const response = await apiClient.get(ENDPOINTS.workflowById(id));
+  const envelope = response.data;
+  return envelope?.data ?? envelope;
 };
 
 export const saveWorkflow = async (workflowData: SaveWorkflowRequest): Promise<SaveWorkflowResponse> => {
+  const response = await apiClient.post(ENDPOINTS.workflow, workflowData);
+  const envelope = response.data;
+
   return {
-    status: 'success',
-    statusMessage: 'Workflow saved successfully',
-    statusCode: 200,
-    data: workflowData,
+    status: envelope?.status || "success",
+    statusMessage: envelope?.message || "Workflow saved successfully",
+    statusCode: response.status || 200,
+    data: envelope?.data ?? envelope,
   };
 };
 
+export const createTransition = async (data: {
+  projectId?: number;
+  fromStatusId: number;
+  toStatusId: number;
+}): Promise<WorkflowTransitionResponse> => {
+  try {
+    const response = await apiClient.post(`${ENDPOINTS.workflow}/transition`, data);
+    const envelope = response.data;
+    return envelope?.data ?? envelope;
+  } catch (error: any) {
+    const backendMessage = error.response?.data?.message || error.message;
+    if (backendMessage && error.message !== backendMessage) {
+      error.message = backendMessage;
+    }
+    throw error;
+  }
+};
+
+export const updateTransition = async (
+  id: number,
+  data: {
+    projectId?: number;
+    fromStatusId: number;
+    toStatusId: number;
+    isActive?: boolean;
+  }
+): Promise<WorkflowTransitionResponse> => {
+  const response = await apiClient.put(ENDPOINTS.workflowById(id), data);
+  const envelope = response.data;
+  return envelope?.data ?? envelope;
+};
+
+export const deleteTransition = async (id: number): Promise<void> => {
+  await apiClient.delete(ENDPOINTS.workflowById(id));
+};
+
 export const getNextStatuses = async (
-  fromStatusId: number
+  fromStatusId: number,
+  projectId?: number
 ): Promise<NextStatusResponse> => {
-  const statuses = mockDb.getStatuses();
-  const filtered = statuses.filter(s => s.id !== fromStatusId);
+  const response = await apiClient.get(ENDPOINTS.workflowNextStatus(fromStatusId), {
+    params: projectId ? { projectId } : undefined,
+  });
+
+  const envelope = response.data;
+  const rawList = envelope?.data ?? envelope ?? [];
+
+  const data: NextStatusItem[] = Array.isArray(rawList)
+    ? rawList.map((item: any) => {
+        const toStatusInfo: StatusInfo = item.toStatus || {
+          id: item.id,
+          name: item.name,
+          color: item.color,
+          type: item.type,
+          description: item.description,
+          positionX: item.positionX,
+          positionY: item.positionY,
+        };
+
+        return {
+          id: toStatusInfo.id,
+          name: toStatusInfo.name,
+          color: toStatusInfo.color,
+          type: toStatusInfo.type,
+          toStatus: toStatusInfo,
+        };
+      })
+    : [];
 
   return {
-    status: 'success',
-    statusMessage: 'Next statuses fetched',
-    statusCode: 200,
-    data: filtered.map(s => ({ id: s.id, name: s.statusName, color: s.color })),
+    status: envelope?.status || "success",
+    statusMessage: envelope?.message || "Next statuses fetched",
+    statusCode: response.status || 200,
+    data,
   };
 };

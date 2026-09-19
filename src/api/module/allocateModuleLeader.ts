@@ -1,4 +1,4 @@
-import { mockDb } from "../../mock/mockData";
+import apiClient from "../../lib/api";
 
 export interface AllocateModuleLeaderRequest {
   projectId: number;
@@ -14,42 +14,43 @@ export interface AllocatedLeaderResponse {
 }
 
 export const allocateModuleLeader = async (data: AllocateModuleLeaderRequest) => {
-  const user = mockDb.getUserById(data.userId);
-  const updated = mockDb.updateModule(data.moduleId, {
-    leaderId: data.userId,
-    leaderName: user ? `${user.firstName} ${user.lastName}` : 'Module Leader',
-    allocatedLeader: {
-      id: Date.now(),
-      employeeId: data.userId,
-      employeeName: user ? `${user.firstName} ${user.lastName}` : 'Module Leader',
-      allocatedDate: new Date().toISOString().split('T')[0],
-    },
+  const response = await apiClient.post('/api/v1/allocate-module-leader', {
+    projectId: Number(data.projectId),
+    moduleId: Number(data.moduleId),
+    employeeId: Number(data.userId),
+    userId: Number(data.userId),
   });
 
   return {
-    status: 'success',
-    statusCode: 200,
-    message: 'Leader allocated successfully',
-    data: updated,
+    status: response.data?.status || 'success',
+    statusCode: response.data?.statusCode || 201,
+    message: response.data?.message || 'Leader allocated successfully',
+    data: response.data?.data,
   };
 };
 
 export const getAllocatedLeader = async (moduleId: number): Promise<AllocatedLeaderResponse | null> => {
-  const mod = mockDb.getModuleById(moduleId);
-  if (!mod || !mod.leaderId) return null;
-  return {
-    allocateModuleId: Date.now(),
-    moduleId: mod.id,
-    userId: mod.leaderId,
-    userName: mod.leaderName || 'Leader',
-  };
+  try {
+    const response = await apiClient.get(`/api/v1/module/${moduleId}`);
+    const mod = response.data?.data;
+    if (!mod || !mod.leaderId) return null;
+    return {
+      allocateModuleId: mod.allocatedModuleId || mod.id,
+      moduleId: mod.id,
+      userId: mod.leaderId,
+      userName: mod.leaderName || 'Leader',
+    };
+  } catch {
+    return null;
+  }
 };
 
 export const deallocateModuleLeader = async (allocateModuleId: number) => {
+  const response = await apiClient.delete(`/api/v1/allocate-module-leader/${allocateModuleId}`);
   return {
-    status: 'success',
-    statusCode: 200,
-    message: 'Leader deallocated successfully',
+    status: response.data?.status || 'success',
+    statusCode: response.data?.statusCode || 200,
+    message: response.data?.message || 'Leader deallocated successfully',
     data: { allocateModuleId },
   };
 };

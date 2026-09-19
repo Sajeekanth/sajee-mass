@@ -209,6 +209,7 @@ export interface CreateModuleResponse {
   statusCode?: string;
   data?: CreateModuleRequest[];
   message?: string;
+  success?: boolean;
 }
 
 interface GetModulesResponse {

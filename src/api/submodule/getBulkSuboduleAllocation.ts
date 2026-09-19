@@ -1,18 +1,29 @@
-import { mockDb } from "../../mock/mockData";
+import apiClient from "../../lib/api";
+import { ENDPOINTS } from "../../utils/apiendpoint";
 
 export const getBulkSuboduleAllocation = async (
   projectId: number,
   moduleId: number,
   submoduleId: number
 ) => {
-  const users = mockDb.getUsers();
-  return users.slice(0, 2).map(u => ({
-    id: u.id,
-    employeeId: u.id,
-    employeeName: `${u.firstName} ${u.lastName}`,
-    projectId,
-    moduleId,
-    submoduleId,
-    role: u.roleName || 'Developer',
-  }));
+  try {
+    const response = await apiClient.get(ENDPOINTS.subModuleDev(Number(submoduleId)));
+    const list = Array.isArray(response.data?.data) ? response.data.data : [];
+    return list.map((item: any) => ({
+      id: item.allocationId || item.employeeId,
+      allocationId: item.allocationId,
+      employeeId: item.employeeId,
+      employeeName: item.employeeName,
+      name: item.employeeName,
+      userName: item.employeeName,
+      role: item.designation || "Developer",
+      designation: item.designation || "Developer",
+      projectId,
+      moduleId,
+      submoduleId,
+    }));
+  } catch (error) {
+    console.error(`Error fetching submodule allocations for submodule ${submoduleId}:`, error);
+    return [];
+  }
 };

@@ -1,10 +1,11 @@
-import { mockDb } from "../../mock/mockData";
+import apiClient from "../../lib/api";
+import { ENDPOINTS } from "../../utils/apiendpoint";
 
 export const deleteSubmodule = async (submoduleId: number, moduleId: number) => {
-  mockDb.deleteSubmodule(moduleId, submoduleId);
+  const response = await apiClient.delete(ENDPOINTS.subModuleById(Number(moduleId), Number(submoduleId)));
   return {
-    status: "success",
-    message: "Submodule deleted successfully",
+    status: response.data?.status || "success",
+    message: response.data?.message || "Submodule deleted successfully",
     data: { submoduleId, moduleId },
   };
 };

@@ -1,30 +1,37 @@
 import { CreateModuleRequest, CreateModuleResponse } from "../../types/index";
-import { mockDb } from "../../mock/mockData";
+import apiClient from "../../lib/api";
+import { ENDPOINTS } from "../../utils/apiendpoint";
 
 export const createModule = async (data: CreateModuleRequest): Promise<CreateModuleResponse> => {
-  const created = mockDb.createModule({
+  const response = await apiClient.post(ENDPOINTS.module(Number(data.projectId)), {
     name: data.name,
-    moduleName: data.name,
-    projectId: data.projectId,
+    description: (data as any).description,
+    leaderId: (data as any).leaderId,
+    projectId: Number(data.projectId),
   });
 
+  const resData = response.data?.data;
   return {
-    status: "success",
-    statusCode: "200",
-    message: "Module created successfully",
-    data: [created as any],
+    status: response.data?.status || "success",
+    statusCode: String(response.data?.statusCode || 201),
+    message: response.data?.message || "Module created successfully",
+    data: Array.isArray(resData) ? resData : (resData ? [resData] : []),
+    success: true,
   };
 };
 
-export const createSubmodule = async (data: { subModuleName: string; moduleId: number }) => {
-  const created = mockDb.createSubmodule(data.moduleId, {
-    name: data.subModuleName,
-    subModuleName: data.subModuleName,
+export const createSubmodule = async (data: { name?: string; subModuleName?: string; moduleId: number; description?: string; assignedDevIds?: number[] }) => {
+  const name = data.name || data.subModuleName || "";
+  const response = await apiClient.post(ENDPOINTS.subModule(Number(data.moduleId)), {
+    name,
+    subModuleName: name,
+    description: data.description,
+    assignedDevIds: data.assignedDevIds,
   });
 
   return {
-    status: "success",
-    message: "Submodule created successfully",
-    data: created,
+    status: response.data?.status || "success",
+    message: response.data?.message || "Submodule created successfully",
+    data: response.data?.data,
   };
 };

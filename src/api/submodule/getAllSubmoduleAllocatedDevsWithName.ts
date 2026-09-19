@@ -1,4 +1,5 @@
-import { mockDb } from "../../mock/mockData";
+import apiClient from "../../lib/api";
+import { ENDPOINTS } from "../../utils/apiendpoint";
 
 export interface SubDevWithName {
   id: number;
@@ -17,16 +18,17 @@ export interface SubDevWithNameResponse {
 export const getAllSubDevwithName = async (
   submoduleId: number
 ): Promise<SubDevWithNameResponse> => {
-  const users = mockDb.getUsers();
+  const response = await apiClient.get(ENDPOINTS.subModuleDev(Number(submoduleId)));
+  const list = Array.isArray(response.data?.data) ? response.data.data : [];
   return {
     status: 200,
     statusCode: '200',
-    statusMessage: 'Success',
-    data: users.slice(0, 2).map(u => ({
-      id: u.id,
-      employeeId: u.id,
-      submoduleId,
-      employeeName: `${u.firstName} ${u.lastName}`,
+    statusMessage: response.data?.message || 'Success',
+    data: list.map((u: any) => ({
+      id: u.allocationId || u.employeeId,
+      employeeId: u.employeeId,
+      submoduleId: Number(submoduleId),
+      employeeName: u.employeeName,
     })),
   };
 };

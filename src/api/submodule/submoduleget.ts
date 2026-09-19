@@ -1,4 +1,5 @@
-import { mockDb } from "../../mock/mockData";
+import apiClient from "../../lib/api";
+import { ENDPOINTS } from "../../utils/apiendpoint";
 
 export interface Submodule {
   id: number;
@@ -16,12 +17,13 @@ export interface GetSubmodulesResponse {
 }
 
 export const getSubmodulesByModule = async (moduleId: number): Promise<GetSubmodulesResponse> => {
-  const submodules = mockDb.getSubmodulesByModule(Number(moduleId));
+  const response = await apiClient.get(ENDPOINTS.subModule(Number(moduleId)));
+  const submodules = Array.isArray(response.data?.data) ? response.data.data : [];
   return {
-    status: 'success',
-    message: 'Submodules fetched successfully',
-    statusCode: 200,
-    data: submodules.map(s => ({
+    status: response.data?.status || 'success',
+    message: response.data?.message || 'Submodules fetched successfully',
+    statusCode: response.data?.statusCode || 200,
+    data: submodules.map((s: any) => ({
       id: s.id,
       name: s.name || s.subModuleName || 'Submodule',
       submoduleName: s.name || s.subModuleName || 'Submodule',

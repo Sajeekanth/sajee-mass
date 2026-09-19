@@ -1,4 +1,5 @@
-import { mockDb } from "../../mock/mockData";
+import apiClient from "../../lib/api";
+import { ENDPOINTS } from "../../utils/apiendpoint";
 
 export interface Modules {
   id: number;
@@ -19,14 +20,15 @@ export interface CreateReleaseResponse {
 }
 
 export const getModulesByProjectId = async (projectId: number): Promise<CreateReleaseResponse> => {
-  const modules = mockDb.getModules(Number(projectId));
+  const response = await apiClient.get(ENDPOINTS.module(Number(projectId)));
+  const rawList = Array.isArray(response.data?.data) ? response.data.data : [];
   return {
-    status: 'success',
-    message: 'Modules fetched successfully',
-    statusCode: 200,
-    data: modules.map(m => ({
+    status: response.data?.status || 'success',
+    message: response.data?.message || 'Modules fetched successfully',
+    statusCode: response.data?.statusCode || 200,
+    data: rawList.map((m: any) => ({
       id: m.id,
-      name: m.name || m.moduleName || 'Module',
+      name: m.name,
       projectId: m.projectId,
       assignedDev: m.leaderId ? {
         userId: m.leaderId,
@@ -38,11 +40,18 @@ export const getModulesByProjectId = async (projectId: number): Promise<CreateRe
 };
 
 export async function getAllocatedUsersByModuleId(moduleId: string | number) {
-  const mod = mockDb.getModuleById(Number(moduleId));
-  const users = mockDb.getUsers();
-  return users.filter(u => mod?.assignedDevs?.includes(`${u.firstName} ${u.lastName}`) || u.id === mod?.leaderId);
+  const response = await apiClient.get(ENDPOINTS.subModuleDev(Number(moduleId)));
+  const list = Array.isArray(response.data?.data) ? response.data.data : [];
+  return list;
 }
 
 export async function getUsersByAllocation(projectId: string | number, _moduleId: string | number, _subModuleId?: string | number) {
-  return mockDb.getUsers();
+  const response = await apiClient.get(`${ENDPOINTS.projectAllocation}/${projectId}`);
+  const envelope = response.data;
+  const list = Array.isArray(envelope?.data?.content)
+    ? envelope.data.content
+    : Array.isArray(envelope?.data)
+    ? envelope.data
+    : [];
+  return list;
 }

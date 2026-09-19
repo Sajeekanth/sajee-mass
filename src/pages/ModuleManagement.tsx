@@ -46,7 +46,7 @@ import {
   reassignSubmoduleDeveloperWithAllocateModuleId,
 } from "../api/module/deallocateDevelopers";
 import { getDefectsByProjectId } from "../api/defect/filterDefectByProject";
-import { mockDb } from "../mock/mockData";
+import { getProjectAllocationsById } from "../api/bench/projectAllocation";
 import { getSubmodulesByModule } from "../api/submodule/getSubmodulesByModule";
 import {
   allocateProjectEmployeeToSubModule,
@@ -157,26 +157,19 @@ export const ModuleManagement: React.FC = () => {
     const allowedRoleIds = new Set(developerRoleIds);
     const allowedRoleNames = new Set(developerRoleNames.map(normalizeRoleName));
 
-    return developersWithRoles.filter((dev) => {
+    const filtered = developersWithRoles.filter((dev) => {
       if (dev.roleId && allowedRoleIds.has(dev.roleId)) {
         return true;
       }
 
       return allowedRoleNames.has(getRoleFromUserWithRole(dev.userWithRole));
     });
+
+    return filtered.length > 0 ? filtered : developersWithRoles;
   };
 
   const getRoleTypedModuleLeaders = () => {
-    const allowedRoleIds = new Set(moduleLeaderRoleIds);
-    const allowedRoleNames = new Set(moduleLeaderRoleNames.map(normalizeRoleName));
-
-    return developersWithRoles.filter((dev) => {
-      if (dev.roleId && allowedRoleIds.has(dev.roleId)) {
-        return true;
-      }
-
-      return allowedRoleNames.has(getRoleFromUserWithRole(dev.userWithRole));
-    });
+    return developersWithRoles;
   };
 
   
@@ -262,13 +255,17 @@ export const ModuleManagement: React.FC = () => {
     if (!selectedProjectId) return;
     setHasLoadedProjectAllocatedEmployees(false);
     try {
-      const users = mockDb.getUsers();
-      const mapped = users.map((emp: any) => {
-        const employeeId = emp.id;
-
+      const allocRes = await getProjectAllocationsById(selectedProjectId);
+      const allocList = Array.isArray(allocRes?.data)
+        ? allocRes.data.filter((a: any) => a.isActive !== false)
+        : [];
+      const mapped = allocList.map((emp: any) => {
+        const employeeId = emp.employeeId ?? emp.id;
+        const name = emp.employeeName ?? `${emp.firstName || ''} ${emp.lastName || ''}`.trim() ?? `Employee ${employeeId}`;
+        const role = emp.designationName ?? emp.roleName ?? 'Developer';
         return {
-          userWithRole: `${emp.firstName} ${emp.lastName}-${emp.roleName || 'Developer'}`,
-          projectAllocationId: emp.id,
+          userWithRole: `${name}-${role}`,
+          projectAllocationId: emp.id ?? emp.allocationId ?? employeeId,
           userId: employeeId,
           roleId: emp.roleId || 1,
         };
@@ -734,6 +731,7 @@ export const ModuleManagement: React.FC = () => {
     }
   };
   const handleAddModule = async () => {
+    if (isCreatingModule) return;
     if (moduleForm.name.trim() && selectedProjectId) {
       const payload = {
         name: moduleForm.name.trim(),
@@ -746,37 +744,30 @@ export const ModuleManagement: React.FC = () => {
         const response = await createModuleApi(payload);
         console.log("Create module response:", response);
 
-        if (response.status === "Created") {
-          await fetchModules();
-          setToastMessage("Module created successfully!");
-          setShowToast(true);
+        const isSuccess =
+          response.status === "Created" ||
+          response.status === "success" ||
+          response.statusCode === "201" ||
+          response.statusCode === "200" ||
+          (response as any).success === true ||
+          Boolean(response.data);
+
+        if (isSuccess) {
           setModuleForm({ name: "" });
           setIsAddModuleModalOpen(false);
-
-          setTimeout(() => {
-            setShowToast(false);
-            setToastMessage(null);
-          }, 5000);
+          setToastMessage("Module created successfully!");
+          setShowToast(true);
+          await fetchModules();
         } else {
-          const isSuccess =
-            response.status === "Created" || response.success === true;
-          if (isSuccess) {
-            await fetchModules();
-            setToastMessage("Module created successfully!");
-            setShowToast(true);
-            setModuleForm({ name: "" });
-            setIsAddModuleModalOpen(false);
-          } else {
-            const errorMessage =
-              response.message || response.error || "Failed to create module";
-            setToastMessage(errorMessage);
-            setShowToast(true);
-          }
-          setTimeout(() => {
-            setShowToast(false);
-            setToastMessage(null);
-          }, 5000);
+          const errorMessage =
+            response.message || (response as any).error || "Failed to create module";
+          setToastMessage(errorMessage);
+          setShowToast(true);
         }
+        setTimeout(() => {
+          setShowToast(false);
+          setToastMessage(null);
+        }, 5000);
       } catch (error: any) {
         console.error("Error creating module:", error);
         let errorMessage = "Failed to add module. Please try again.";
@@ -916,7 +907,7 @@ export const ModuleManagement: React.FC = () => {
         const response = await updateSubmoduleApi(
           Number(editingSubmoduleId),
           Number(currentModuleIdForSubmodule),
-          { subModuleName: submoduleForm.name },
+          { name: submoduleForm.name, subModuleName: submoduleForm.name },
         );
 
         if (response.status === "success" || response.success) {
@@ -924,6 +915,7 @@ export const ModuleManagement: React.FC = () => {
           setIsAddSubmoduleModalOpen(false);
           setIsEditingSubmodule(false);
           setEditingSubmoduleId(null);
+          setSubmoduleForm({ name: "" });
           setToastMessage(
             response.message || "Submodule updated successfully!",
           );
@@ -944,12 +936,22 @@ export const ModuleManagement: React.FC = () => {
           }, 5000);
         }
       } catch (error: any) {
-        const backendMessage = error.response?.data?.message || error.message;
-        if (backendMessage) {
-          setToastMessage(backendMessage);
-        } else {
-          setToastMessage("Failed to update submodule. Please try again.");
+        const isConflict =
+          error.response?.status === 409 ||
+          error.response?.data?.code === 409 ||
+          error.response?.data?.statusCode === 409 ||
+          error.response?.data?.status === 409 ||
+          (error.response?.data?.message &&
+            error.response.data.message.toLowerCase().includes("already exists"));
+        const backendMessage =
+          error.response?.data?.message ||
+          error.message ||
+          "Submodule with this name already exists in this module.";
+        if (isConflict) {
+          setAlertMessage(backendMessage);
+          setAlertOpen(true);
         }
+        setToastMessage(backendMessage);
         setShowToast(true);
         setTimeout(() => {
           setShowToast(false);
@@ -963,6 +965,7 @@ export const ModuleManagement: React.FC = () => {
       setIsCreatingSubmodule(true);
       try {
         const response = await createSubmodule({
+          name: submoduleForm.name,
           subModuleName: submoduleForm.name,
           moduleId: Number(currentModuleIdForSubmodule),
         });
@@ -971,6 +974,7 @@ export const ModuleManagement: React.FC = () => {
           setIsAddSubmoduleModalOpen(false);
           setIsEditingSubmodule(false);
           setEditingSubmoduleId(null);
+          setSubmoduleForm({ name: "" });
           setToastMessage("Submodule added successfully!");
           setShowToast(true);
           setTimeout(() => {
@@ -989,21 +993,27 @@ export const ModuleManagement: React.FC = () => {
           }, 5000);
         }
       } catch (error: any) {
-        if (error.response?.data?.message) {
-          setToastMessage(error.response.data.message);
-          setShowToast(true);
-          setTimeout(() => {
-            setShowToast(false);
-            setToastMessage(null);
-          }, 5000);
-        } else {
-          setToastMessage("Failed to add submodule. Please try again.");
-          setShowToast(true);
-          setTimeout(() => {
-            setShowToast(false);
-            setToastMessage(null);
-          }, 5000);
+        const isConflict =
+          error.response?.status === 409 ||
+          error.response?.data?.code === 409 ||
+          error.response?.data?.statusCode === 409 ||
+          error.response?.data?.status === 409 ||
+          (error.response?.data?.message &&
+            error.response.data.message.toLowerCase().includes("already exists"));
+        const backendMessage =
+          error.response?.data?.message ||
+          error.message ||
+          "Submodule with this name already exists in this module.";
+        if (isConflict) {
+          setAlertMessage(backendMessage);
+          setAlertOpen(true);
         }
+        setToastMessage(backendMessage);
+        setShowToast(true);
+        setTimeout(() => {
+          setShowToast(false);
+          setToastMessage(null);
+        }, 5000);
       } finally {
         setIsCreatingSubmodule(false);
       }
@@ -1101,35 +1111,61 @@ export const ModuleManagement: React.FC = () => {
     moduleId: string,
     submoduleId: string,
   ) => {
-    console.log("1. Received moduleId:", moduleId);
-    console.log("2. Received submoduleId:", submoduleId);
-
-    if (hasSubmoduleAllocatedDevelopers(moduleId, submoduleId)) {
-      setToastMessage("Cannot delete submodule: It has allocated developers.");
-      setShowToast(true);
-    } else {
-      const isUsedInDefects = await checkSubmoduleUsedInDefects(
-        moduleId,
-        submoduleId,
-      );
-      if (isUsedInDefects) {
-        setToastMessage(
-          "Cannot delete submodule: It is being used in defects.",
-        );
-        setShowToast(true);
-      } else {
-        console.log("3. Setting state - moduleId:", moduleId);
-        console.log("4. Setting state - submoduleId:", submoduleId);
-
-        setPendingDeleteModuleIdForSubmodule(moduleId);
-        setPendingDeleteSubmoduleId(submoduleId);
-        setConfirmOpen(true);
+    let hasAllocatedDevs = hasSubmoduleAllocatedDevelopers(moduleId, submoduleId);
+    if (!hasAllocatedDevs) {
+      try {
+        const liveDevs = await getAllSubDevwithName(Number(submoduleId));
+        if (Array.isArray(liveDevs.data) && liveDevs.data.length > 0) {
+          hasAllocatedDevs = true;
+        }
+      } catch (err) {
+        console.warn("Error checking live submodule developers:", err);
       }
     }
+
+    if (hasAllocatedDevs) {
+      setToastMessage("Cannot delete submodule: It has allocated developers.");
+      setShowToast(true);
+      setTimeout(() => {
+        setShowToast(false);
+        setToastMessage(null);
+      }, 5000);
+      return;
+    }
+
+    const isUsedInDefects = await checkSubmoduleUsedInDefects(
+      moduleId,
+      submoduleId,
+    );
+    if (isUsedInDefects) {
+      setToastMessage(
+        "Cannot delete submodule: It is being used in defects.",
+      );
+      setShowToast(true);
+      setTimeout(() => {
+        setShowToast(false);
+        setToastMessage(null);
+      }, 5000);
+      return;
+    }
+
+    setPendingDeleteModuleIdForSubmodule(moduleId);
+    setPendingDeleteSubmoduleId(submoduleId);
+    setConfirmOpen(true);
   };
 
   const handleDeleteModule = async (moduleId: string) => {
     if (!selectedProjectId) return;
+
+    if (hasModuleChildren(moduleId)) {
+      setToastMessage("Cannot delete module: It contains submodules.");
+      setShowToast(true);
+      setTimeout(() => {
+        setShowToast(false);
+        setToastMessage(null);
+      }, 5000);
+      return;
+    }
 
     try {
       const response = await deleteModuleApi(
@@ -1137,7 +1173,6 @@ export const ModuleManagement: React.FC = () => {
         Number(moduleId),
       );
 
-      
       await fetchModules();
       setToastMessage("Module deleted successfully!");
       setShowToast(true);
@@ -1149,13 +1184,14 @@ export const ModuleManagement: React.FC = () => {
     } catch (error: any) {
       console.error("Error deleting module:", error);
 
-      
       const errorMessage =
         error.response?.data?.message ||
+        error.response?.data?.statusMessage ||
+        error.response?.data?.error ||
         error.message ||
-        "Failed to delete module";
-      
-      setToastMessage("Module Already Linked - Cannot Delete");
+        "Module Already Linked - Cannot Delete";
+
+      setToastMessage(errorMessage);
       setShowToast(true);
 
       setTimeout(() => {
@@ -1371,29 +1407,17 @@ export const ModuleManagement: React.FC = () => {
           }
         }
 
-        
+        setIsBulkAssignmentModalOpen(false);
+        setSelectedItems([]);
+        setSelectedModuleDevelopersForDeallocationBulk([]);
+        setSelectedDevelopersForDeallocationBulk([]);
+        setSelectedModuleDeveloperProjectAllocationId(null);
+        setSelectedDeveloperProjectAllocationIds([]);
+
         setTimeout(() => {
           setShowToast(false);
           setToastMessage(null);
-        }, 5000); 
-
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        }, 5000);
       } else {
         setToastMessage("Failed to deallocate developers. Please try again.");
         setShowToast(true);
@@ -1556,69 +1580,58 @@ export const ModuleManagement: React.FC = () => {
     try {
       if (onlyModulesSelected) {
         if (!selectedModuleDeveloperProjectAllocationId) {
-          setToastMessage("Please select a developer for module allocation.");
+          setToastMessage("Please select a module leader for module allocation.");
           setShowToast(true);
           return;
         }
+
+        const selectedDeveloper = developersWithRoles.find(
+          (d) =>
+            Number(d.projectAllocationId) ===
+              Number(selectedModuleDeveloperProjectAllocationId) ||
+            Number(d.userId) ===
+              Number(selectedModuleDeveloperProjectAllocationId),
+        );
+        if (!selectedDeveloper) {
+          setToastMessage(
+            "Selected employee not found. Please try again.",
+          );
+          setShowToast(true);
+          return;
+        }
+
         let didAllocate = false;
         for (const item of selectedItems) {
           if (item.type === "module") {
-            
-            const directModuleDevs = (
-              moduleDevelopers[item.moduleId] || []
-            ).filter((d) => d.subModuleId == null);
-            if (directModuleDevs.length > 0) {
-              const module = modulesByProjectId?.find(
-                (m) => m.id.toString() === item.moduleId,
-              );
-              const moduleName = module?.name || "Unknown Module";
+            const module = modulesByProjectId?.find(
+              (m) => m.id.toString() === item.moduleId,
+            );
+            const currentLeaderId = module?.assignedDev?.userId;
+            if (
+              currentLeaderId &&
+              Number(currentLeaderId) === Number(selectedDeveloper.userId)
+            ) {
               setToastMessage(
-                `Module leader already allocated for ${moduleName}`,
+                `Employee is already active leader for ${module?.name || "this module"}`,
               );
               setShowToast(true);
-              setTimeout(() => setShowToast(false), 3000);
-              return;
-            }
-
-            
-            const alreadyAssigned = directModuleDevs.some(
-              (d) =>
-                d.projectAllocationId ===
-                selectedModuleDeveloperProjectAllocationId,
-            );
-            if (alreadyAssigned) {
               continue;
             }
 
             try {
-              
-              const selectedDeveloper = developersWithRoles.find(
-                (d) =>
-                  d.projectAllocationId ===
-                  selectedModuleDeveloperProjectAllocationId,
-              );
-              if (!selectedDeveloper) {
-                setAlertMessage(
-                  "Selected developer not found. Please try again.",
-                );
-                setAlertOpen(true);
-                return;
-              }
-
               await allocateModuleLeader({
                 projectId: Number(selectedProjectId),
                 moduleId: Number(item.moduleId),
-                userId: selectedDeveloper.userId,
+                userId: Number(selectedDeveloper.userId),
               });
               didAllocate = true;
             } catch (error: any) {
-              if (error.response?.data?.message) {
-                setToastMessage(error.response.data.message);
-              } else {
-                setToastMessage(
-                  "Failed to allocate module leader. Please try again.",
-                );
-              }
+              const errMsg =
+                error.response?.data?.message ||
+                error.response?.data?.error ||
+                error.message ||
+                "Failed to allocate module leader. Please try again.";
+              setToastMessage(errMsg);
               setShowToast(true);
               return;
             }
@@ -1637,41 +1650,22 @@ export const ModuleManagement: React.FC = () => {
             }
           }
 
-          
+          setIsBulkAssignmentModalOpen(false);
+          setSelectedItems([]);
+          setSelectedModuleDeveloperProjectAllocationId(null);
+          await fetchModules();
+
           setTimeout(() => {
             setShowToast(false);
             setToastMessage(null);
           }, 5000); 
-
-          
-          
-          
-          
-          
-          
-          
-          
-          
-          
-          
-          
-          
-          
-          
-          
-          
-
-
-
-
         } else {
-          setToastMessage("Already allocated.");
+          setToastMessage("No changes made to module leader allocation.");
           setShowToast(true);
         }
         
         setSelectedModuleDeveloperProjectAllocationId(null);
-        
-        fetchModules();
+        await fetchModules();
         return;
       }
       
@@ -1756,11 +1750,17 @@ export const ModuleManagement: React.FC = () => {
                   submoduleAllocationResults.success++;
                 }
                 await fetchSubmoduleAllocatedDevs(item.submoduleId);
-              } catch (error) {
+              } catch (error: any) {
                 console.error(
                   `Submodule allocation error for ${submoduleName}:`,
                   error,
                 );
+                const errMsg =
+                  error.response?.data?.message ||
+                  error.message ||
+                  "Submodule developer allocation failed.";
+                setToastMessage(errMsg);
+                setShowToast(true);
               }
             }
           }
@@ -1786,34 +1786,17 @@ export const ModuleManagement: React.FC = () => {
             }
           }
 
-          
+          setIsBulkAssignmentModalOpen(false);
+          setSelectedItems([]);
+          setSelectedDeveloperProjectAllocationIds([]);
+          await fetchModules();
+
           setTimeout(() => {
             setShowToast(false);
             setToastMessage(null);
           }, 5000); 
-
-          
-          setSelectedDeveloperProjectAllocationIds([]);
-
-          
-          
-          
-          
-          
-          
-          
-          
-          
-          
-          
-          
-          
-          
-          
-          
-          
         }
-        fetchModules();
+        await fetchModules();
         return;
       }
     } finally {
@@ -2539,33 +2522,6 @@ export const ModuleManagement: React.FC = () => {
     selectedDeveloperProjectAllocationIds,
   ]);
 
-  
-  useEffect(() => {
-    if (
-      isBulkAssignmentModalOpen &&
-      developersWithRoles.length > 0 &&
-      activeTab === "allocate"
-    ) {
-      if (onlySubmodulesSelected) {
-        
-        
-        setSelectedDeveloperProjectAllocationIds([]);
-      } else if (onlyModulesSelected) {
-        
-        
-        setSelectedModuleDeveloperProjectAllocationId(null);
-      }
-    }
-  }, [
-    isBulkAssignmentModalOpen,
-    developersWithRoles,
-    activeTab,
-    selectedItems,
-    submoduleAllocations,
-    moduleDevelopers,
-    onlySubmodulesSelected,
-    onlyModulesSelected,
-  ]);
 
   
   useEffect(() => {
@@ -3492,7 +3448,13 @@ export const ModuleManagement: React.FC = () => {
           setActiveSubmoduleSection(null);
           setActiveTab("allocate");
         }}
-        title={`Developer Management`}
+        title={
+          onlyModulesSelected
+            ? "Module Leader Allocation"
+            : onlySubmodulesSelected
+            ? "Submodule Developer Allocation"
+            : "Allocation Management"
+        }
         size="full"
       >
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 max-h-[95vh] overflow-y-auto">

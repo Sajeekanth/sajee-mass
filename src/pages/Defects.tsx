@@ -59,8 +59,7 @@ import { getActiveRelease } from "../api/releaseView/getActiveRelease";
 import { useAuth } from "../context/AuthContext";
 import { createComment } from "../api/comment/createComment";
 import { updateComment } from "../api/comment/createComment";
-import { getCommentsByDefectId } from "../api/comment/comment";
-import { mockDb } from "../mock/mockData";
+import apiClient from "../lib/api";
 import { usePermission } from "../context/PermissionContext";
 import { useAccessibleProjects } from "../api/useAccessibleProjects";
 import { useSearchParams } from 'react-router-dom';
@@ -187,8 +186,9 @@ export const Defects: React.FC = () => {
         throw new Error('Please select a developer to reassign to.');
       }
 
-      defectIds.forEach((id: any) => {
-        mockDb.updateDefect(Number(id), { assignedToId: Number(assignedToId) });
+      await apiClient.post('/api/v1/defects/bulk-reassign', {
+        defectIds: defectIds.map(Number),
+        employeeId: Number(assignedToId),
       });
 
       const successMessage = `Successfully reassigned ${defectIds.length} defect(s)`;
@@ -394,7 +394,8 @@ export const Defects: React.FC = () => {
 
   const loadWorkflowStartStatus = async () => {
     try {
-      const statuses = mockDb.getStatuses();
+      const statusRes = await getAllDefectStatuses(0, 100);
+      const statuses = statusRes.content || [];
       if (statuses.length > 0) {
         setWorkflowStartStatusId(statuses[0].id.toString());
       }
@@ -1437,7 +1438,8 @@ const filteredDefects = backendDefects.filter((d) => {
     setStatusError(null);
 
     try {
-      const statusData = mockDb.getStatuses();
+      const statusRes = await getAllDefectStatuses(0, 100);
+      const statusData = statusRes.content || [];
       const mappedStatuses = statusData.map((s: any) => ({
         id: s.id,
         statusName: s.name || s.statusName,
@@ -2537,7 +2539,7 @@ const filteredDefects = backendDefects.filter((d) => {
 
     setIsExporting(true);
     try {
-      const defectsList = mockDb.getDefects(Number(selectedProjectId));
+      const defectsList = filteredDefects || [];
       const headers = ["Defect ID", "Title", "Severity", "Priority", "Status", "Module", "Assigned To"];
       const rows = defectsList.map(d => [
         d.defectId,

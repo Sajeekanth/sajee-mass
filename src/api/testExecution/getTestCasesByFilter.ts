@@ -1,4 +1,4 @@
-import { mockDb } from "../../mock/mockData";
+import apiClient from "../../lib/api";
 
 export async function getTestCasesByFilter({
   projectId,
@@ -11,25 +11,32 @@ export async function getTestCasesByFilter({
   moduleId?: number;
   subModuleId?: number;
 }) {
-  let testCases = mockDb.getTestCases();
-  if (subModuleId) {
-    testCases = testCases.filter(t => t.subModuleId === subModuleId);
-  } else if (moduleId) {
-    testCases = testCases.filter(t => t.moduleId === moduleId);
-  }
+  const params: Record<string, any> = {};
+  if (moduleId) params.moduleId = moduleId;
+  if (subModuleId) params.subModuleId = subModuleId;
 
-  return testCases.map(t => ({
-    id: t.id,
-    testcaseNo: t.testcaseNo,
-    description: t.description,
-    detailsSteps: t.detailsSteps || t.steps,
-    expectedResult: t.expectedResult,
-    severityName: t.severityName,
-    defectTypeName: t.defectTypeName,
-    subModuleName: t.subModuleName,
-    moduleName: t.moduleName,
-    projectId,
-    releaseId,
-    executionStatus: t.executionStatus || 'NOT_RUN',
-  }));
+  try {
+    const response = await apiClient.get(`/api/v1/release-test-cases/release/${releaseId}/test-case`, { params });
+    const items = response.data?.data || [];
+
+    return items.map((t: any) => ({
+      id: t.id,
+      testcaseNo: t.testcaseNo,
+      description: t.description,
+      detailsSteps: t.steps,
+      expectedResult: t.expectedResult,
+      severityName: t.severityName,
+      defectTypeName: t.defectTypeName,
+      subModuleName: t.subModuleName,
+      moduleName: t.moduleName,
+      projectId,
+      releaseId,
+      executionStatus: t.passOrFail || 'NOT_RUN',
+      backendId: t.id,
+      releaseTestCaseId: t.id,
+    }));
+  } catch (error) {
+    console.error("Failed to fetch release test cases:", error);
+    return [];
+  }
 }

@@ -1,4 +1,4 @@
-import { mockDb } from "../../mock/mockData";
+import apiClient from "../../lib/api";
 
 export interface DefectCreate {
   description: string;
@@ -8,7 +8,7 @@ export interface DefectCreate {
   priorityId: number;
   defectStatusId: number;
   typeId: number;
-  reOpenCount: number;
+  reOpenCount?: number;
   attachment?: string | null;
   assignbyId?: number | null;
   assigntoId?: number;
@@ -37,25 +37,29 @@ export const addDefects = async (
     defectData = payload;
   }
 
-  const created = mockDb.createDefect({
-    title: defectData.description || 'New Defect',
-    description: defectData.description || '',
+  const body = {
+    description: defectData.description || defectData.title || '',
     steps: defectData.steps || '',
     projectId: Number(defectData.projectId || 1),
-    severityId: Number(defectData.severityId || 2),
-    priorityId: Number(defectData.priorityId || 2),
-    defectStatusId: Number(defectData.defectStatusId || 1),
     moduleId: Number(defectData.modulesId || defectData.moduleId || 1),
-    subModuleId: Number(defectData.subModuleId || 1),
-    releaseId: Number(defectData.releasesId || defectData.releaseId || 1),
-    assignedToId: Number(defectData.assigntoId || defectData.assignedToId || 3),
-    assignedById: Number(defectData.assignbyId || defectData.assignedById || 1),
-  });
+    subModuleId: defectData.subModuleId ? Number(defectData.subModuleId) : null,
+    releaseId: defectData.releasesId || defectData.releaseId ? Number(defectData.releasesId || defectData.releaseId) : null,
+    severityId: Number(defectData.severityId || 1),
+    priorityId: Number(defectData.priorityId || 1),
+    defectTypeId: Number(defectData.typeId || defectData.defectTypeId || 1),
+    statusId: defectData.defectStatusId || defectData.statusId ? Number(defectData.defectStatusId || defectData.statusId) : null,
+    assignedToId: defectData.assigntoId || defectData.assignedToId ? Number(defectData.assigntoId || defectData.assignedToId) : null,
+    assignedById: defectData.assignbyId || defectData.assignedById ? Number(defectData.assignbyId || defectData.assignedById) : null,
+    attachment: defectData.attachment || null,
+  };
+
+  const response = await apiClient.post("/api/v1/defect", body);
+  const created = response.data?.data;
 
   return {
-    status: 'success',
-    statusCode: 200,
-    message: 'Defect created successfully',
+    status: response.data?.status || 'success',
+    statusCode: response.data?.statusCode || 201,
+    message: response.data?.message || 'Defect created successfully',
     data: [created],
   };
 };

@@ -1,4 +1,4 @@
-import { mockDb } from "../../mock/mockData";
+import apiClient from "../../lib/api";
 
 export interface CreateTestCaseRequest {
   description: string;
@@ -16,39 +16,28 @@ export interface CreateTestCaseResponse {
 }
 
 export async function createTestCase(subModuleId: number, testCaseData: CreateTestCaseRequest) {
-  const created = mockDb.createTestCase({
+  const response = await apiClient.post(`/api/v1/sub-module/${subModuleId}/test-case`, {
+    subModuleId: Number(subModuleId),
     description: testCaseData.description,
     detailsSteps: testCaseData.detailsSteps,
-    steps: testCaseData.detailsSteps,
-    expectedResult: testCaseData.expectedResult || '',
-    subModuleId: subModuleId,
-    severityId: testCaseData.severityId,
-    defectTypeId: testCaseData.defectTypeId,
+    expectedResult: testCaseData.expectedResult || "",
+    severityId: Number(testCaseData.severityId),
+    defectTypeId: Number(testCaseData.defectTypeId),
   });
 
+  const payload = response.data;
   return {
-    status: 'success',
-    statusCode: 200,
-    message: 'Test case created successfully',
-    data: created,
+    status: payload?.status || "success",
+    statusCode: payload?.statusCode || response.status || 201,
+    message: payload?.message || "Test case created successfully",
+    statusMessage: payload?.message || "Test case created successfully",
+    data: payload?.data,
   };
 }
 
-export const createTestCaseSub = async (subModuleId: number, payload: CreateTestCaseRequest): Promise<CreateTestCaseResponse> => {
-  const created = mockDb.createTestCase({
-    description: payload.description,
-    detailsSteps: payload.detailsSteps,
-    steps: payload.detailsSteps,
-    expectedResult: payload.expectedResult || '',
-    subModuleId: subModuleId,
-    severityId: payload.severityId,
-    defectTypeId: payload.defectTypeId,
-  });
-
-  return {
-    status: 'success',
-    statusCode: 200,
-    statusMessage: 'Test case created successfully',
-    data: created,
-  };
+export const createTestCaseSub = async (
+  subModuleId: number,
+  payload: CreateTestCaseRequest
+): Promise<CreateTestCaseResponse> => {
+  return createTestCase(subModuleId, payload);
 };

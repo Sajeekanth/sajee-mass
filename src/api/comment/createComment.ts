@@ -1,4 +1,4 @@
-import { mockDb } from '../../mock/mockData';
+import apiClient from '../../lib/api';
 
 export interface CreateCommentRequest {
   userId: string | number;
@@ -15,14 +15,16 @@ export interface CreateCommentResponse {
 }
 
 export const createComment = async (payload: CreateCommentRequest): Promise<CreateCommentResponse> => {
-  const user = mockDb.getUserById(Number(payload.userId));
-  const newComment = mockDb.addDefectComment(Number(payload.defectId), payload.comment, user);
+  const res = await apiClient.post(`/defect/${payload.defectId}/comment`, {
+    comment: payload.comment,
+    employeeId: payload.userId,
+  });
 
   return {
-    status: 'success',
-    statusCode: 200,
-    message: 'Comment added successfully',
-    data: newComment,
+    status: res.data?.status || 'success',
+    statusCode: res.data?.statusCode || 201,
+    message: res.data?.message || 'Comment added successfully',
+    data: res.data?.data,
   };
 };
 

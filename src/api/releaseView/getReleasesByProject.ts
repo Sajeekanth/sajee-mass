@@ -1,6 +1,7 @@
-import { mockDb } from "../../mock/mockData";
+import apiClient from "../../lib/api";
+import { ENDPOINTS } from "../../utils/apiendpoint";
 
 export const getReleasesByProjectId = async (projectId: string | number) => {
-  const releases = mockDb.getReleases(Number(projectId));
-  return releases;
+  const response = await apiClient.get(ENDPOINTS.releaseByProject(Number(projectId)));
+  return response.data?.data || [];
 };

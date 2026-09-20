@@ -14,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { mockDb } from "../../mock/mockData";
+import { getReleasesByProjectId } from "../../api/releaseView/getReleasesByProject";
 import { Button } from "../ui/Button";
 import { Card, CardContent } from "../ui/Card";
 import { Toast } from "../ui/Toast";
@@ -278,7 +279,8 @@ export const StandaloneQAAllocationTab: React.FC<StandaloneQAAllocationTabProps>
       setMessage(null);
 
       try {
-        const releaseData = mockDb.getReleases(Number(projectIdValue)).map((release) => ({
+        const rawReleases = await getReleasesByProjectId(Number(projectIdValue));
+        const releaseData = (rawReleases || []).map((release: any) => ({
           ...release,
           releaseName: release.name || release.releaseName,
         }));

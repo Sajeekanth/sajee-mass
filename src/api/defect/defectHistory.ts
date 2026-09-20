@@ -1,4 +1,4 @@
-import { mockDb } from "../../mock/mockData";
+import apiClient from "../../lib/api";
 
 export interface DefectHistoryEntry {
   id: number;
@@ -17,22 +17,28 @@ export interface DefectHistoryEntry {
 export async function getDefectHistoryByDefectId(
   defectId: string | number
 ): Promise<DefectHistoryEntry[]> {
-  const def = mockDb.getDefectById(Number(defectId));
-  if (!def || !def.defectHistory) return [];
-
-  return def.defectHistory.map((h, idx) => ({
-    id: h.id || idx + 1,
-    defectId: Number(defectId),
-    assignedByName: 'Priya Ramesh',
-    assignedToName: def.assignedToName || 'Karthik Sundaram',
-    previousStatus: idx === 0 ? 'New' : def.defectHistory![idx - 1].status,
-    defectStatus: h.status,
-    name: h.comment || `Status updated to ${h.status}`,
-    defectDate: h.changedAt.split('T')[0],
-    defectTime: h.changedAt.split('T')[1]?.substring(0, 5) || '12:00',
-    createdBy: h.changedBy || 'QA Tester',
-    updatedBy: h.changedBy || 'QA Tester',
-  }));
+  try {
+    const res = await apiClient.get(`/defect/${defectId}/comment`);
+    const comments = Array.isArray(res.data?.data) ? res.data.data : [];
+    return comments.map((c: any, idx: number) => {
+      const createdAt = c.createdAt || new Date().toISOString();
+      return {
+        id: c.id || idx + 1,
+        defectId: Number(defectId),
+        assignedByName: c.employeeName || 'System',
+        assignedToName: c.employeeName || 'Assigned User',
+        previousStatus: idx === 0 ? 'New' : 'Open',
+        defectStatus: 'Updated',
+        name: c.comment || 'Defect comment added',
+        defectDate: createdAt.split('T')[0],
+        defectTime: createdAt.split('T')[1]?.substring(0, 5) || '12:00',
+        createdBy: c.employeeName || 'User',
+        updatedBy: c.employeeName || 'User',
+      };
+    });
+  } catch {
+    return [];
+  }
 }
 
 export const getDefectHistory = getDefectHistoryByDefectId;

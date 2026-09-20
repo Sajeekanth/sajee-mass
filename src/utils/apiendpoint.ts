@@ -127,11 +127,12 @@ testCaseBySubModule: (subModuleId: number, description?: string, defectTypeId?: 
   testCaseBulkExport: `${BASE}/test-case/bulk`,
 
   release: `${BASE}/release`,
+  releaseByProject: (projectId: number) => `${BASE}/project/${projectId}/release`,
   releaseCount: `${BASE}/release/counts`,
   releaseById: (id: number) => `${BASE}/release/${id}`,
   releaseStatus: (releaseId: number) => `${BASE}/release/${releaseId}/status`,
-releaseActiveByProject: (projectId: number) =>
-  `/api/v1/project/${projectId}/release/active`,
+  releaseActiveByProject: (projectId: number) =>
+    `${BASE}/project/${projectId}/release/active`,
   releaseKloc: (id: number) => `${BASE}/release/${id}`,
   releaseKlocById: (releaseId: number) =>
     `${BASE}/release/${releaseId}/kloc`,

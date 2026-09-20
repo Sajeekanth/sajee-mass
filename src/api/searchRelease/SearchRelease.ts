@@ -1,13 +1,16 @@
-import { mockDb } from "../../mock/mockData";
+import apiClient from "../../lib/api";
+import { ENDPOINTS } from "../../utils/apiendpoint";
 
 export const getReleasesByProjectId = async (projectId: string | number) => {
-  return mockDb.getReleases(Number(projectId));
+  const response = await apiClient.get(ENDPOINTS.releaseByProject(Number(projectId)));
+  return response.data?.data || [];
 };
 
 export async function searchReleases(params: any) {
-  const releases = mockDb.getReleases();
-  if (typeof params === 'number' || typeof params === 'string') {
-    return mockDb.getReleaseById(params);
+  if (typeof params === 'number' || (typeof params === 'string' && !isNaN(Number(params)))) {
+    const response = await apiClient.get(ENDPOINTS.releaseById(Number(params)));
+    return response.data?.data;
   }
-  return releases;
+  const response = await apiClient.get(ENDPOINTS.release);
+  return response.data?.data || [];
 }

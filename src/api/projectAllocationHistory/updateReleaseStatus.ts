@@ -1,4 +1,5 @@
-import { mockDb } from "../../mock/mockData";
+import apiClient from "../../lib/api";
+import { ENDPOINTS } from "../../utils/apiendpoint";
 
 export interface UpdateReleaseStatusResponse {
   status: string;
@@ -12,15 +13,16 @@ export interface UpdateReleaseStatusResponse {
 }
 
 export const updateReleaseStatus = async (releaseId: number, status: 'ACTIVE' | 'HOLD'): Promise<UpdateReleaseStatusResponse> => {
-  const updated = mockDb.updateRelease(releaseId, { status, releaseStatus: status });
+  const response = await apiClient.put(ENDPOINTS.releaseStatus(releaseId), { status });
+  const releaseData = response.data?.data;
   return {
-    status: 'success',
-    statusCode: 200,
-    statusMessage: 'Release status updated successfully',
+    status: response.data?.status || 'success',
+    statusCode: response.data?.statusCode || 200,
+    statusMessage: response.data?.message || 'Release status updated successfully',
     data: {
-      id: releaseId,
-      name: updated?.name || 'Release',
-      status: status,
+      id: releaseData?.id || releaseId,
+      name: releaseData?.name || releaseData?.releaseName || 'Release',
+      status: releaseData?.status || status,
     },
   };
 };

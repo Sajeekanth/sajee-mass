@@ -1,21 +1,40 @@
-import { mockDb } from "../../mock/mockData";
+import apiClient from "../../lib/api";
 
 export const searchTestCaseByCriteria = async (
-  _moduleId: number,
+  moduleId: number,
   description?: string,
   defectTypeId?: number,
   severityId?: number
 ) => {
-  let testCases = mockDb.getTestCases();
-  if (description) {
-    const term = description.toLowerCase();
-    testCases = testCases.filter(t => t.description.toLowerCase().includes(term));
-  }
-  if (defectTypeId) {
-    testCases = testCases.filter(t => t.defectTypeId === defectTypeId);
-  }
-  if (severityId) {
-    testCases = testCases.filter(t => t.severityId === severityId);
-  }
-  return testCases;
+  const params: any = {
+    moduleId,
+    page: 0,
+    size: 1000,
+  };
+  if (description && description.trim()) params.description = description.trim();
+  if (defectTypeId) params.defectTypeId = defectTypeId;
+  if (severityId) params.severityId = severityId;
+
+  const response = await apiClient.get("/api/v1/test-case", { params });
+  const paged = response.data?.data;
+  const content = Array.isArray(paged?.content) ? paged.content : (Array.isArray(paged) ? paged : []);
+  return content.map((t: any) => ({
+    id: t.id,
+    no: t.no || t.testcaseNo,
+    testcaseNo: t.testcaseNo || t.no,
+    description: t.description || "",
+    detailsSteps: t.detailsSteps || t.steps || "",
+    steps: t.steps || t.detailsSteps || "",
+    expectedResult: t.expectedResult || "",
+    subModuleId: t.subModuleId || t.submoduleId,
+    subModuleName: t.subModuleName || t.subModule || "",
+    moduleId: t.moduleId,
+    moduleName: t.moduleName || t.module || "",
+    projectId: t.projectId,
+    projectName: t.projectName || "",
+    severityId: t.severityId,
+    severityName: t.severityName || t.severity || "",
+    defectTypeId: t.defectTypeId,
+    defectTypeName: t.defectTypeName || t.type || "",
+  }));
 };

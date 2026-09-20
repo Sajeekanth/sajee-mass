@@ -1,7 +1,7 @@
-import { mockDb } from "../mock/mockData";
+import apiClient from "../lib/api";
 
 interface TestCase {
-  id: string;
+  id: string | number;
   module: string;
   subModule: string;
   description: string;
@@ -11,6 +11,8 @@ interface TestCase {
   projectId: string;
   releaseId?: string;
   testCaseId?: string;
+  testcaseNo?: string;
+  executionStatus?: string;
 }
 
 export interface GetTestCasesByFilterResponse {
@@ -26,90 +28,152 @@ export const getTestCasesByFilter = async (
   submoduleId: string | number,
   releaseId: string | number
 ): Promise<GetTestCasesByFilterResponse> => {
-  const testCases = mockDb.getTestCases();
-  return {
-    status: 'success',
-    message: 'Fetched successfully',
-    statusCode: 200,
-    data: testCases.map(t => ({
-      id: String(t.id),
-      testCaseId: t.testcaseNo,
-      module: t.moduleName || 'Module',
-      subModule: t.subModuleName || 'Submodule',
-      description: t.description,
-      steps: t.detailsSteps || t.steps || '',
-      type: t.defectTypeName || 'Functional Bug',
-      severity: t.severityName || 'Medium',
-      projectId: String(projectId),
-      releaseId: String(releaseId),
-    })),
-  };
+  try {
+    const params: Record<string, any> = {};
+    if (moduleId) params.moduleId = Number(moduleId);
+    if (submoduleId) params.subModuleId = Number(submoduleId);
+
+    const response = await apiClient.get(`/api/v1/release-test-cases/release/${releaseId}/test-case`, { params });
+    const items = response.data?.data || [];
+
+    return {
+      status: 'success',
+      message: 'Fetched successfully',
+      statusCode: 200,
+      data: items.map((t: any) => ({
+        id: t.id,
+        testCaseId: t.testcaseNo || `TC-${t.testCaseId || t.id}`,
+        testcaseNo: t.testcaseNo,
+        module: t.moduleName || '',
+        subModule: t.subModuleName || '',
+        description: t.description || '',
+        steps: t.steps || '',
+        type: t.defectTypeName || '',
+        severity: t.severityName || '',
+        projectId: String(projectId),
+        releaseId: String(releaseId),
+        executionStatus: t.passOrFail || 'NOT_RUN',
+      })),
+    };
+  } catch (error: any) {
+    return {
+      status: 'error',
+      message: error?.response?.data?.message || 'Failed to fetch test cases',
+      statusCode: error?.response?.status || 500,
+      data: [],
+    };
+  }
 };
 
 export const allocateTestCaseToRelease = async (
-  _releaseId: number,
-  _testCaseId: number
+  releaseId: number,
+  testCaseId: number
 ): Promise<any> => {
-  return {
-    status: 'success',
-    statusCode: 200,
-    message: 'Test case allocated to release successfully',
-  };
+  const response = await apiClient.post(`/api/v1/release-test-cases/release/${releaseId}/test-case`, {
+    releaseId,
+    testCaseIds: [testCaseId],
+  });
+  return response.data;
 };
 
 export const allocateTestCaseToMultipleReleases = async (
-  _testCaseId: string | number,
+  testCaseId: string | number,
   releaseIds: (string | number)[]
 ): Promise<{ results: any[]; failed: { releaseId: number; error: string }[]; message: string }> => {
+  const results: any[] = [];
+  const failed: { releaseId: number; error: string }[] = [];
+
+  for (const r of releaseIds) {
+    try {
+      const resp = await allocateTestCaseToRelease(Number(r), Number(testCaseId));
+      results.push({ releaseId: Number(r), status: 'success', data: resp });
+    } catch (err: any) {
+      failed.push({
+        releaseId: Number(r),
+        error: err?.response?.data?.message || err?.message || 'Allocation failed',
+      });
+    }
+  }
+
   return {
-    results: releaseIds.map(r => ({ releaseId: Number(r), status: 'success' })),
-    failed: [],
-    message: `Test case allocated to ${releaseIds.length} release(s) successfully.`,
+    results,
+    failed,
+    message: `Test case allocated to ${results.length} release(s) successfully.${failed.length ? ` Failed: ${failed.length}` : ''}`,
   };
 };
 
 export const allocateTestCasesToManyReleases = async (
   releaseIds: (string | number)[],
   releaseNames: string[],
-  _testCaseIds: (string | number)[]
+  testCaseIds: (string | number)[]
 ): Promise<any> => {
-  return releaseIds.map((r, idx) => ({
-    releaseId: r,
-    releaseName: releaseNames[idx] || `Release ${r}`,
-    status: 'fulfilled',
-    data: { success: true },
-    error: null,
-  }));
+  const promises = releaseIds.map(async (r, idx) => {
+    try {
+      const resp = await apiClient.post(`/api/v1/release-test-cases/release/${r}/test-case`, {
+        releaseId: Number(r),
+        testCaseIds: testCaseIds.map(Number),
+      });
+      return {
+        releaseId: r,
+        releaseName: releaseNames[idx] || `Release ${r}`,
+        status: 'fulfilled',
+        data: resp.data,
+        error: null,
+      };
+    } catch (err: any) {
+      return {
+        releaseId: r,
+        releaseName: releaseNames[idx] || `Release ${r}`,
+        status: 'rejected',
+        data: null,
+        error: err,
+      };
+    }
+  });
+
+  return Promise.all(promises);
 };
 
 export const bulkAllocateTestCasesToReleases = async (
-  _testCaseIds: (string | number)[],
-  _releaseId: string | number
+  testCaseIds: (string | number)[],
+  releaseId: string | number
 ): Promise<any> => {
-  return {
-    status: 'success',
-    statusCode: 200,
-    message: 'Bulk allocation succeeded',
-  };
+  const response = await apiClient.post(`/api/v1/release-test-cases/release/${releaseId}/test-case`, {
+    releaseId: Number(releaseId),
+    testCaseIds: testCaseIds.map(Number),
+  });
+  return response.data;
 };
 
 export const getReleaseTestCasesByFiltersGroup = async (params: {
   releaseId: number;
-  moduleId: number;
-  subModuleId: number;
+  moduleId?: number;
+  subModuleId?: number;
+  projectId?: number;
 }): Promise<any> => {
-  const testCases = mockDb.getTestCases(params.subModuleId);
+  const queryParams: Record<string, any> = {};
+  if (params.moduleId) queryParams.moduleId = params.moduleId;
+  if (params.subModuleId) queryParams.subModuleId = params.subModuleId;
+
+  const response = await apiClient.get(`/api/v1/release-test-cases/release/${params.releaseId}/test-case`, {
+    params: queryParams,
+  });
+
+  const list = response.data?.data || [];
   return {
     status: 'success',
-    data: testCases.map(tc => ({
+    data: list.map((tc: any) => ({
       id: tc.id,
-      testCaseId: tc.testcaseNo,
+      testCaseId: tc.testcaseNo || `TC-${tc.testCaseId || tc.id}`,
+      testcaseNo: tc.testcaseNo,
       description: tc.description,
-      steps: tc.detailsSteps || tc.steps,
+      steps: tc.steps,
       type: tc.defectTypeName || tc.type,
       severity: tc.severityName || tc.severity,
       moduleId: tc.moduleId || params.moduleId,
       subModuleId: tc.subModuleId || params.subModuleId,
+      executionStatus: tc.passOrFail || 'NOT_RUN',
+      backendId: tc.id,
     })),
   };
 };
@@ -119,13 +183,10 @@ export const getQaAllocationSummary = async (_qaEngineerIds: string): Promise<an
     status: 'success',
     data: {
       allocationSummary: {
-        totalAllocated: 12,
-        qaEngineerCount: 2,
-        remaining: 4,
-        qaEngineers: [
-          { id: 2, name: 'Priya Ramesh', testCases: 7 },
-          { id: 5, name: 'Dinesh Venkatesh', testCases: 5 },
-        ],
+        totalAllocated: 0,
+        qaEngineerCount: 0,
+        remaining: 0,
+        qaEngineers: [],
       },
     },
     statusCode: 200,
@@ -133,32 +194,17 @@ export const getQaAllocationSummary = async (_qaEngineerIds: string): Promise<an
 };
 
 export const getQaEngineerTestCases = async (_params: any): Promise<any> => {
-  const testCases = mockDb.getTestCases();
   return {
     status: 'success',
-    data: testCases.map(t => ({
-      id: t.id,
-      testCaseId: t.testcaseNo,
-      description: t.description,
-      steps: t.detailsSteps,
-      type: t.defectTypeName,
-      severity: t.severityName,
-    })),
+    data: [],
     statusCode: 200,
   };
 };
 
 export const getDefectTestCaseCounts = async (_releaseId: string | number): Promise<any> => {
-  const defects = mockDb.getDefects();
   return {
     status: 'success',
-    data: defects.map(d => ({
-      testId: d.testCaseId || 1,
-      testCaseId: `TC-${d.testCaseId || 1}`,
-      defectId: d.defectId,
-      assignedTo: d.assignedToName || 'Developer',
-      priority: d.priorityName || 'High',
-    })),
+    data: [],
     statusCode: 200,
   };
 };

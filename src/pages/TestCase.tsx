@@ -42,7 +42,7 @@ const BASE_URL = import.meta.env.VITE_BASE_URL;
 
 import QuickAddTestCase from "./QuickAddTestCase";
 import { useApp } from "../context/AppContext";
-import { mockDb } from "../mock/mockData";
+import apiClient from "../lib/api";
 import { importTestCases } from "../api/importTestCase";
 import { useAccessibleProjects } from "../api/useAccessibleProjects";
 import { usePermission } from "../context/PermissionContext";
@@ -97,10 +97,18 @@ export const TestCase: React.FC = () => {
       { id: string; name: string; submodules: { id: string; name: string }[] }[]
     >
   >({});
-  const fetchAllTestCasesForProject = async (_projId: string) => {
+  const fetchAllTestCasesForProject = async (projId: string) => {
     try {
-      const testCases = mockDb.getTestCases();
-      const merged = testCases.map((tc: any) => ({
+      const response = await apiClient.get("/api/v1/test-case", {
+        params: { projectId: projId, page: 0, size: 1000 },
+      });
+      const paged = response.data?.data;
+      const content = Array.isArray(paged?.content)
+        ? paged.content
+        : Array.isArray(paged)
+        ? paged
+        : [];
+      const merged = content.map((tc: any) => ({
         ...tc,
         id: tc.id,
         no: tc.testcaseNo || tc.no,
@@ -114,7 +122,9 @@ export const TestCase: React.FC = () => {
       const sorted = sortTestCasesByNo(merged as any);
       setAllModuleTestCases(sorted);
       setTestCases(sorted);
-      setIsServerPaginated(false);
+      setTotalPagesFromServer(paged?.totalPages ?? 1);
+      setTotalElements(paged?.totalElements ?? merged.length);
+      setIsServerPaginated(true);
     } catch (err) {
       console.error("Error fetching project-level test cases:", err);
     }
@@ -1474,15 +1484,31 @@ export const TestCase: React.FC = () => {
 
     setIsExporting(true);
     try {
-      const testCasesList = mockDb.getTestCases();
+      let testCasesList: any[] = [];
+      if (selectedSubmoduleId) {
+        const res = await apiClient.get(`/api/v1/sub-module/${selectedSubmoduleId}/test-case`, {
+          params: { page: 0, size: 10000 },
+        });
+        testCasesList = res.data?.data?.content || [];
+      } else if (selectedModuleId) {
+        const res = await apiClient.get(`/api/v1/module/${selectedModuleId}/test-case`, {
+          params: { page: 0, size: 10000 },
+        });
+        testCasesList = res.data?.data?.content || [];
+      } else if (selectedProjectId) {
+        const res = await apiClient.get("/api/v1/test-case", {
+          params: { projectId: selectedProjectId, page: 0, size: 10000 },
+        });
+        testCasesList = res.data?.data?.content || [];
+      }
       const headers = ["Test Case No", "Description", "Severity", "Defect Type", "Module", "Submodule"];
-      const rows = testCasesList.map(t => [
-        t.testcaseNo,
+      const rows = testCasesList.map((t: any) => [
+        t.testcaseNo || t.no,
         `"${(t.description || '').replace(/"/g, '""')}"`,
-        t.severityName || 'Medium',
-        t.defectTypeName || 'Functional Bug',
-        t.moduleName || 'Module',
-        t.subModuleName || 'Submodule',
+        t.severityName || t.severity || 'Medium',
+        t.defectTypeName || t.defectType || 'Functional Bug',
+        t.moduleName || t.module || 'Module',
+        t.subModuleName || t.subModule || 'Submodule',
       ]);
 
       const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
@@ -1820,29 +1846,30 @@ export const TestCase: React.FC = () => {
                     try {
                       setClientFilteredResults(null);
 
-                      
-                      const params = new URLSearchParams();
-                      if (searchFilters.description)
-                        params.append("description", searchFilters.description);
-                      if (searchFilters.typeId)
-                        params.append("defectTypeId", searchFilters.typeId);
-                      if (searchFilters.severityId)
-                        params.append("severityId", searchFilters.severityId);
-                      params.append("page", "0");
-                      params.append("size", "100000");
-
-                      
-                      let raw = mockDb.getTestCases(selectedSubmoduleId ? Number(selectedSubmoduleId) : undefined);
-                      if (searchFilters.description) {
-                        const term = searchFilters.description.toLowerCase();
-                        raw = raw.filter(tc => (tc.description || '').toLowerCase().includes(term));
+                      const params: any = {
+                        page: 0,
+                        size: 1000,
+                      };
+                      if (selectedProjectId) params.projectId = selectedProjectId;
+                      if (selectedModuleId) params.moduleId = selectedModuleId;
+                      if (selectedSubmoduleId) params.submoduleId = selectedSubmoduleId;
+                      if (searchFilters.description && searchFilters.description.trim()) {
+                        params.description = searchFilters.description.trim();
                       }
                       if (searchFilters.typeId) {
-                        raw = raw.filter(tc => tc.defectTypeId === Number(searchFilters.typeId));
+                        params.defectTypeId = Number(searchFilters.typeId);
                       }
                       if (searchFilters.severityId) {
-                        raw = raw.filter(tc => tc.severityId === Number(searchFilters.severityId));
+                        params.severityId = Number(searchFilters.severityId);
                       }
+
+                      const res = await apiClient.get("/api/v1/test-case", { params });
+                      const paged = res.data?.data;
+                      const raw = Array.isArray(paged?.content)
+                        ? paged.content
+                        : Array.isArray(paged)
+                        ? paged
+                        : [];
 
                       const normalized = raw.map((tc: any) => {
                         const severityObj = severities.find(
@@ -1854,15 +1881,15 @@ export const TestCase: React.FC = () => {
                         return {
                           ...tc,
                           id: tc.id,
-                          no: tc.no,
+                          no: tc.no || tc.testcaseNo,
                           testCaseId: tc.id,
                           description: tc.description,
-                          detailsSteps: tc.detailsSteps,
-                          steps: tc.detailsSteps,
+                          detailsSteps: tc.detailsSteps || tc.steps,
+                          steps: tc.steps || tc.detailsSteps,
                           expectedResult: tc.expectedResult,
-                          subModuleId: tc.subModuleId,
-                          subModuleName: tc.subModuleName,
-                          subModule: tc.subModuleName,
+                          subModuleId: tc.subModuleId || tc.submoduleId,
+                          subModuleName: tc.subModuleName || tc.subModule,
+                          subModule: tc.subModuleName || tc.subModule,
                           severityId: tc.severityId,
                           severity: severityObj?.name || tc.severityName || "",
                           defectTypeId: tc.defectTypeId,

@@ -1,25 +1,23 @@
-import { mockDb } from "../../mock/mockData";
+import apiClient from "../../lib/api";
 
 export const getReleaseTestCaseCount = async (releaseId: string | number) => {
-  const testCases = mockDb.getTestCases();
-  const total = testCases.length;
-  const passed = testCases.filter(t => t.executionStatus === 'PASS').length;
-  const failed = testCases.filter(t => t.executionStatus === 'FAIL').length;
-  const blocked = testCases.filter(t => t.executionStatus === 'BLOCKED').length;
-  const unexecuted = total - (passed + failed + blocked);
-
-  return {
-    status: 'success',
-    statusCode: 200,
-    data: {
-      releaseId: Number(releaseId),
-      totalTestCases: total,
-      passedTestCases: passed,
-      failedTestCases: failed,
-      blockedTestCases: blocked,
-      unexecutedTestCases: Math.max(0, unexecuted),
-    },
-  };
+  try {
+    const response = await apiClient.get(`/api/v1/release-test-cases/release/${releaseId}/test-case/count`);
+    return response.data;
+  } catch (error) {
+    return {
+      status: 'error',
+      statusCode: 500,
+      data: {
+        releaseId: Number(releaseId),
+        totalTestCases: 0,
+        passedTestCases: 0,
+        failedTestCases: 0,
+        blockedTestCases: 0,
+        unexecutedTestCases: 0,
+      },
+    };
+  }
 };
 
 export const getReleaseTestCaseCounts = getReleaseTestCaseCount;

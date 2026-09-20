@@ -1,4 +1,4 @@
-import { mockDb } from "../../mock/mockData";
+import apiClient from "../../lib/api";
 
 export const updateDefectById = async (
   defectId: string | number,
@@ -13,23 +13,44 @@ export const updateDefectById = async (
     defectData = payload;
   }
 
-  const updated = mockDb.updateDefect(Number(defectId), {
-    title: defectData.description || defectData.title,
-    description: defectData.description || defectData.title,
-    status: defectData.status || defectData.defectStatusName,
-    severityId: defectData.severityId ? Number(defectData.severityId) : undefined,
-    priorityId: defectData.priorityId ? Number(defectData.priorityId) : undefined,
-    assignedToId: defectData.assignedToId ? Number(defectData.assignedToId) : undefined,
-    steps: defectData.steps,
-  });
+  const body: Record<string, any> = {};
+  if (defectData.description || defectData.title) {
+    body.description = defectData.description || defectData.title;
+  }
+  if (defectData.steps) {
+    body.steps = defectData.steps;
+  }
+  if (defectData.severityId) {
+    body.severityId = Number(defectData.severityId);
+  }
+  if (defectData.priorityId) {
+    body.priorityId = Number(defectData.priorityId);
+  }
+  if (defectData.typeId || defectData.defectTypeId) {
+    body.defectTypeId = Number(defectData.typeId || defectData.defectTypeId);
+  }
+  if (defectData.status || defectData.defectStatusName) {
+    body.status = defectData.status || defectData.defectStatusName;
+  }
+  if (defectData.assignedToId || defectData.assigntoId) {
+    body.assignedToId = Number(defectData.assignedToId || defectData.assigntoId);
+  }
+  if (defectData.releaseId || defectData.releasesId) {
+    body.releaseId = Number(defectData.releaseId || defectData.releasesId);
+  }
+  if (defectData.attachment) {
+    body.attachment = defectData.attachment;
+  }
+
+  const response = await apiClient.put(`/api/v1/defect/${defectId}`, body);
 
   return {
-    status: 200,
+    status: response.status || 200,
     data: {
       status: 'success',
       statusCode: 200,
       message: 'Defect updated successfully',
-      data: updated,
+      data: response.data?.data,
     },
   };
 };

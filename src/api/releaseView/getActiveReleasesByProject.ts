@@ -1,4 +1,5 @@
-import { mockDb } from "../../mock/mockData";
+import apiClient from "../../lib/api";
+import { ENDPOINTS } from "../../utils/apiendpoint";
 
 export interface ActiveRelease {
   id: string;
@@ -9,10 +10,11 @@ export interface ActiveRelease {
 export const getActiveReleasesByProject = async (
   projectId: string | number
 ): Promise<ActiveRelease[]> => {
-  const releases = mockDb.getReleases(Number(projectId));
-  return releases.map(r => ({
+  const response = await apiClient.get(ENDPOINTS.releaseActiveByProject(Number(projectId)));
+  const list = Array.isArray(response.data?.data) ? response.data.data : [];
+  return list.map((r: any) => ({
     id: String(r.id),
     name: r.name || r.releaseName || 'Release',
-    status: r.status || 'In Progress',
+    status: r.status || 'ACTIVE',
   }));
 };
